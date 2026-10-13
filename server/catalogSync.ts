@@ -10,7 +10,7 @@ import { repriceAfterSupplierSync, type PricingRates } from "./pricing";
 const AUTO_SYNC_TTL_MS = 60_000;
 const AUTO_SYNC_WAIT_MS = 2_500;
 const MAX_SERVICES = 2_000;
-export const SUPPLIER_STOCK_MAX_AGE_MS = 90_000;
+export const SUPPLIER_STOCK_MAX_AGE_MS = 15 * 60_000;
 
 type SyncResult = { provider: ShopProvider; synced: number; active: number; stockSyncedAt: Date };
 type SyncState = { lastAttemptAt: number; pending?: Promise<SyncResult> };

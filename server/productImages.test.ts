@@ -20,4 +20,12 @@ describe("product image upload validation", () => {
     const png = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(MAX_PRODUCT_IMAGE_BYTES)]);
     expect(() => validateProductImage(png, "image/png")).toThrow(ProductImageError);
   });
+
+  it("stores image locally and returns an uploads URL when cloud storage is unconfigured", async () => {
+    const { uploadProductImageObject } = await import("./productImages");
+    const png = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(16)]);
+    const url = await uploadProductImageObject("acczone", "test_item_key", png, "image/png");
+    expect(url).toMatch(/^\/uploads\/product-images\/acczone\/test_item_key\/[a-f0-9-]+\.png$/);
+  });
 });
+

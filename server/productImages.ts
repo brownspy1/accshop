@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
 import { ENV } from "./_core/env";
 
 export const MAX_PRODUCT_IMAGE_BYTES = 512 * 1024;
@@ -39,11 +41,25 @@ export async function uploadProductImageObject(
 ): Promise<string> {
   validateProductImage(bytes, mimeType);
   if (!/^[A-Za-z0-9_-]{1,128}$/.test(serviceKey)) throw new ProductImageError("Invalid product identity.", 400);
+  const ext = suffix[mimeType as ProductImageMime];
+
   const apiUrl = ENV.forgeApiUrl.replace(/\/+$/, "");
   const apiKey = ENV.forgeApiKey;
-  if (!apiUrl || !apiKey) throw new ProductImageError("Managed image storage is temporarily unavailable.", 503);
 
-  const ext = suffix[mimeType as ProductImageMime];
+  // Standalone / Production local storage fallback when cloud storage is not configured
+  if (!apiUrl || !apiKey) {
+    try {
+      const uploadDir = path.resolve(process.cwd(), "uploads", "product-images", provider, serviceKey);
+      await fs.promises.mkdir(uploadDir, { recursive: true });
+      const fileName = `${randomUUID()}.${ext}`;
+      const filePath = path.join(uploadDir, fileName);
+      await fs.promises.writeFile(filePath, bytes);
+      return `/uploads/product-images/${provider}/${serviceKey}/${fileName}`;
+    } catch {
+      throw new ProductImageError("Local image storage could not be written.", 500);
+    }
+  }
+
   const objectKey = `product-images/${provider}/${serviceKey}/${randomUUID()}.${ext}`;
   const uploadBody = new ArrayBuffer(bytes.byteLength);
   new Uint8Array(uploadBody).set(bytes);

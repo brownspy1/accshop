@@ -20,3 +20,14 @@
 
 .price-review-confirm{grid-column:1/-1;display:flex;align-items:flex-start;gap:8px;padding:8px 10px;border:1px solid #efcf91;border-radius:8px;background:#fff8e8;color:#79530b;font-size:12px;line-height:1.45}.price-review-confirm input{margin:2px 0 0;accent-color:#0b765c;flex:0 0 auto}.admin-email-status{display:flex;align-items:center;gap:8px;margin:8px 0 12px;padding:9px 11px;border:1px solid var(--line,#e8eeeb);border-radius:8px;color:#52615b;font-size:12px}.admin-email-status svg{color:#168b6d;flex:0 0 auto}.availability.stale{color:#96651a;background:#fff8e8}.availability.stale i{background:#d89d37}.stock-stale-public{border-color:#edcf96;background:#fff9ed;color:#78500a}
 
+/* Standalone admin password login */
+.admin-login-form{display:grid;gap:12px;margin:18px 0;width:100%}
+.password-input-wrap{position:relative;display:flex;align-items:center}
+.admin-password-input{width:100%;padding:11px 40px 11px 14px;border:1px solid var(--line,#e8eeeb);border-radius:10px;background:#fbfdfc;color:#172a24;font-size:14px;outline:none;transition:border-color .15s ease}
+.admin-password-input:focus{border-color:#0b765c;box-shadow:0 0 0 3px rgba(11,118,92,.12)}
+.pw-toggle{position:absolute;right:12px;background:transparent;border:none;color:#75817d;cursor:pointer;display:grid;place-items:center;padding:0}
+.pw-toggle:hover{color:#172a24}
+.login-divider{display:flex;align-items:center;text-align:center;margin:12px 0;color:#8c9894;font-size:12px}
+.login-divider::before,.login-divider::after{content:'';flex:1;border-bottom:1px solid var(--line,#e8eeeb)}
+.login-divider span{padding:0 10px}
+

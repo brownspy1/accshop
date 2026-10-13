@@ -20,12 +20,59 @@ const dateText = (value: Date | string | null | undefined) => value ? new Intl.D
 
 export default function Admin() {
   const [tab, setTab] = useState<AdminTab>("overview");
+  const [adminPassword, setAdminPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const utils = trpc.useUtils();
   const { data: user, isLoading, error } = trpc.auth.me.useQuery();
   const logout = trpc.auth.logout.useMutation({ onSuccess: () => { window.location.href = "/"; } });
+  const loginWithSecret = trpc.auth.loginWithSecret.useMutation({
+    onSuccess: () => {
+      toast.success("Admin হিসেবে সফলভাবে sign in হয়েছে");
+      void utils.auth.me.invalidate();
+    },
+    onError: (err) => {
+      toast.error(err.message || "Sign in ব্যর্থ হয়েছে");
+    },
+  });
   const admin = user?.role === "admin";
   if (isLoading) return <div className="admin-loading"><LoaderCircle className="spin" /> Secure admin session যাচাই হচ্ছে…</div>;
-  if (!user) return <div className="admin-gate"><Link href="/" className="gate-brand"><BrandMark /></Link><div className="gate-card"><span className="gate-icon"><KeyRound size={22} /></span><div className="eyebrow">ADMIN ACCESS</div><h1>Secure sign in.</h1><p>এই control panel-এ প্রবেশ করতে অনুমোদিত Manus account দিয়ে sign in করুন।</p><button className="button button-primary gate-button" onClick={() => startLogin()}>Manus দিয়ে sign in <ArrowRight size={15} /></button><Link href="/" className="back-link"><ArrowLeft size={14} /> Shop-এ ফিরুন</Link>{error && <small className="muted">Session check-এ সমস্যা; আবার চেষ্টা করুন।</small>}</div><div className="gate-security"><ShieldCheck size={14} /> Allowlisted admin accounts only</div></div>;
-  if (!admin) return <div className="admin-gate"><Link href="/" className="gate-brand"><BrandMark /></Link><div className="gate-card"><span className="gate-icon gate-icon-warning"><ShieldCheck size={22} /></span><div className="eyebrow">RESTRICTED AREA</div><h1>Admin access নেই।</h1><p>এই Manus account-টি store admin allowlist-এ নেই। Shop order details ও API settings server-side protected।</p><button className="button button-secondary gate-button" onClick={() => logout.mutate()} disabled={logout.isPending}>অন্য account-এ sign in করুন <LogOut size={15} /></button><Link href="/" className="back-link"><ArrowLeft size={14} /> Shop-এ ফিরুন</Link></div></div>;
+  if (!user) return <div className="admin-gate">
+    <Link href="/" className="gate-brand"><BrandMark /></Link>
+    <div className="gate-card">
+      <span className="gate-icon"><KeyRound size={22} /></span>
+      <div className="eyebrow">ADMIN ACCESS</div>
+      <h1>Secure sign in.</h1>
+      <p>এই control panel-এ প্রবেশ করতে Admin password / key দিন।</p>
+      <form onSubmit={(e) => { e.preventDefault(); if (adminPassword.trim()) loginWithSecret.mutate({ password: adminPassword.trim() }); }} className="admin-login-form">
+        <div className="password-input-wrap">
+          <input
+            type={showPassword ? "text" : "password"}
+            value={adminPassword}
+            onChange={(e) => setAdminPassword(e.target.value)}
+            placeholder="Admin password / key দিন"
+            className="admin-password-input"
+            autoFocus
+          />
+          <button type="button" className="pw-toggle" onClick={() => setShowPassword(!showPassword)} title={showPassword ? "Hide" : "Show"}>
+            {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+          </button>
+        </div>
+        <button type="submit" className="button button-primary gate-button" disabled={loginWithSecret.isPending || !adminPassword.trim()}>
+          {loginWithSecret.isPending ? <LoaderCircle size={15} className="spin" /> : <ShieldCheck size={15} />} Sign in <ArrowRight size={15} />
+        </button>
+      </form>
+      {Boolean(window.__MANUS_CONFIG__?.oauthPortalUrl) && (
+        <>
+          <div className="login-divider"><span>অথবা</span></div>
+          <button className="button button-secondary gate-button" onClick={() => startLogin()}>Manus দিয়ে sign in <ArrowRight size={15} /></button>
+        </>
+      )}
+      <Link href="/" className="back-link"><ArrowLeft size={14} /> Shop-এ ফিরুন</Link>
+      {error && <small className="muted">Session check-এ সমস্যা; আবার চেষ্টা করুন।</small>}
+    </div>
+    <div className="gate-security"><ShieldCheck size={14} /> Allowlisted admin accounts only</div>
+  </div>;
+  if (!admin) return <div className="admin-gate"><Link href="/" className="gate-brand"><BrandMark /></Link><div className="gate-card"><span className="gate-icon gate-icon-warning"><ShieldCheck size={22} /></span><div className="eyebrow">RESTRICTED AREA</div><h1>Admin access নেই।</h1><p>এই account-টি store admin allowlist-এ নেই। Shop order details ও API settings server-side protected।</p><button className="button button-secondary gate-button" onClick={() => logout.mutate()} disabled={logout.isPending}>অন্য account-এ sign in করুন <LogOut size={15} /></button><Link href="/" className="back-link"><ArrowLeft size={14} /> Shop-এ ফিরুন</Link></div></div>;
 
   return <div className="admin-shell">
     <aside className="admin-sidebar"><Link href="/" className="admin-logo"><BrandMark compact /></Link><div className="admin-label">STORE MANAGEMENT</div><nav>{navItems.map(item => <button type="button" key={item.id} className={tab === item.id ? "admin-nav-item active" : "admin-nav-item"} onClick={() => setTab(item.id)}><item.icon size={17} /><span>{item.label}</span>{item.id === "orders" && <OrderBadge />}</button>)}</nav><div className="sidebar-bottom"><div className="admin-identity"><div className="admin-avatar">{user.name?.slice(0, 1) || "A"}</div><div><b>{user.name || "Store admin"}</b><small>{user.email}</small></div></div><button className="logout-button" onClick={() => logout.mutate()} disabled={logout.isPending}><LogOut size={15} /> Sign out</button></div></aside>
