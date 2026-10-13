@@ -1,13 +1,32 @@
 import StoreHeader from "@/components/StoreHeader";
 import { trpc } from "@/lib/trpc";
 import { formatMoney, orderStatusLabels } from "@/lib/shop";
-import { ArrowLeft, ArrowRight, CheckCircle2, Circle, LoaderCircle, PackageCheck, Search, ShieldCheck } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, CheckCircle2, Circle, Copy, KeyRound, LoaderCircle, PackageCheck, Search, ShieldCheck } from "lucide-react";
 import { FormEvent, useEffect, useState } from "react";
 import { Link, useRoute } from "wouter";
 
 const displayStatus: Record<string, string> = {
   awaiting_payment: "Payment যাচাই বাকি", paid: "Payment নিশ্চিত", fulfilling: "Activation চলছে", fulfilled: "Delivery সম্পন্ন", partially_fulfilled: "আংশিক delivery · support প্রয়োজন", fulfillment_unknown: "Activation result যাচাই হচ্ছে", fulfillment_failed: "Delivery review প্রয়োজন", cancelled: "Order বাতিল",
 };
+
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      /* ignore */
+    }
+  };
+  return (
+    <button type="button" className={`code-copy-btn ${copied ? "copied" : ""}`} onClick={copy} aria-label="Copy activation code">
+      {copied ? <Check size={12} /> : <Copy size={12} />}
+      {copied ? "Copied" : "Copy"}
+    </button>
+  );
+}
 
 export default function TrackOrder() {
   const [, routeParams] = useRoute("/track/:orderNo");
@@ -21,8 +40,8 @@ export default function TrackOrder() {
   return <div className="shop-page"><StoreHeader /><main className="track-page container-wide">
     <div className="breadcrumb"><Link href="/">Shop</Link><span>/</span><strong>Order tracking</strong></div>
     <section className="track-shell">
-      <div className="track-intro"><span className="track-icon"><PackageCheck size={24} /></span><div className="eyebrow">ORDER STATUS</div><h1>আপনার অর্ডার কোথায়?</h1><p>Order code, checkout-এ দেওয়া email ও phone দিন। তথ্যগুলো মিললে order status দেখতে পারবেন। Activation code দেখতে email verify করে Account page-এ sign in করুন।</p>
-        <div className="privacy-note"><ShieldCheck size={15} /> Order code একা দিয়ে কেউ order দেখতে পারবে না; activation code-এর জন্য verified account লাগবে।</div></div>
+      <div className="track-intro"><span className="track-icon"><PackageCheck size={24} /></span><div className="eyebrow">ORDER STATUS</div><h1>আপনার অর্ডার কোথায়?</h1><p>Order code, checkout-এ দেওয়া email ও phone দিন। তথ্যগুলো মিললে order status দেখতে পারবেন এবং delivery সম্পন্ন হলে activation code সরাসরি এখানে দেখতে ও copy করতে পারবেন।</p>
+        <div className="privacy-note"><ShieldCheck size={15} /> Order code, email ও phone তিনটির মিল থাকলে নিরাপদ ডেলিভারি কোড অন-স্ক্রিন প্রদর্শিত হবে।</div></div>
       <form className="track-form" onSubmit={submit}><label className="field">Order code<input required minLength={8} maxLength={32} value={form.orderNo} onChange={e => { setForm({ ...form, orderNo: e.target.value.toUpperCase() }); reset(); }} placeholder="AZ-XXXXXXXXXXXXX" /></label><label className="field">Checkout email<input type="email" required maxLength={320} value={form.email} onChange={e => { setForm({ ...form, email: e.target.value }); reset(); }} placeholder="you@example.com" /></label><label className="field">Checkout phone<input type="tel" required minLength={7} maxLength={64} value={form.phone} onChange={e => { setForm({ ...form, phone: e.target.value }); reset(); }} placeholder="01XXXXXXXXX" /></label><button className="button button-primary track-submit" type="submit" disabled={result.isPending}>{result.isPending ? <LoaderCircle className="spin" size={16} /> : <Search size={16} />} Order খুঁজুন <ArrowRight size={15} /></button>
         {result.isError && submitted && <p className="form-error">{result.error.message}</p>}
       </form>
@@ -30,7 +49,7 @@ export default function TrackOrder() {
 
     {result.data && submitted && <section className="track-result"><div className="result-heading"><div><span className="eyebrow">{result.data.orderNo}</span><h2>{orderStatusLabels[result.data.status] ?? result.data.status}</h2></div><span className={`status-chip status-${result.data.status}`}>{displayStatus[result.data.status] ?? result.data.status}</span></div>
       <div className="timeline">{["awaiting_payment", "paid", "fulfilled"].map((status, index) => {const active = status === "awaiting_payment" ? true : status === "paid" ? ["paid", "fulfilling", "fulfilled", "partially_fulfilled"].includes(result.data.status) : result.data.status === "fulfilled"; return <div className={`timeline-item ${active ? "done" : ""}`} key={status}><span className="timeline-icon">{active ? <CheckCircle2 size={16} /> : <Circle size={15} />}</span><div><b>{["Order received", "Payment verified", "Activation delivered"][index]}</b><small>{["আপনার order তৈরি হয়েছে", "Admin manual payment যাচাই করেন", "Activation code delivery সম্পন্ন"][index]}</small></div>{index < 2 && <i />}</div>;})}</div>
-      <div className="track-items">{result.data.items.map((item, index) => <article className="track-item" key={`${item.serviceName}-${index}`}><div className="mini-product-mark">AZ</div><div className="track-item-main"><b>{item.serviceName}</b><small>Quantity {item.quantity} · {displayStatus[item.fulfillmentState] ?? item.fulfillmentState}</small></div></article>)}</div>
+      <div className="track-items">{result.data.items.map((item, index) => <article className="track-item" key={`${item.serviceName}-${index}`}><div className="mini-product-mark">AZ</div><div className="track-item-main"><b>{item.serviceName}</b><small>Quantity {item.quantity} · {displayStatus[item.fulfillmentState] ?? item.fulfillmentState}</small>{item.codes && item.codes.length > 0 && <div className="track-delivered-codes"><div className="track-codes-header"><KeyRound size={13} /> Activation Code{item.codes.length > 1 ? "s" : ""}:</div>{item.codes.map((code: string, cIdx: number) => <div key={cIdx} className="track-code-item"><code>{code}</code><CopyButton text={code} /></div>)}</div>}</div></article>)}</div>
       <div className="track-total"><span>Order total</span><b>{formatMoney(result.data.totalAmount, result.data.currency)}</b></div>
       {result.data.status === "awaiting_payment" && <div className="notice"><Circle size={14} /><span>Payment verify হলে status update হবে। কিছুক্ষণ পর আবার দেখুন।</span></div>}
       {result.data.status === "fulfillment_unknown" && <div className="notice warning"><ShieldCheck size={14} /><span>Provider response review হচ্ছে। Duplicate purchase এড়াতে admin history যাচাই না করা পর্যন্ত পুনরায় attempt বন্ধ রাখা হয়েছে।</span></div>}

@@ -193,7 +193,14 @@ export async function customerRecentDeliveryMail(orderId: number) {
 
 export async function inspectEmailConfigForAdmin() {
   const db = await getDb();
-  const status = { configured: db ? await hasProviderApiKey("resend") : false, updatedAt: null as Date | null, fromEmail: "", publicSiteUrl: DEFAULT_PUBLIC_URL, domains: [] as Array<{ name: string; status: string; sendingEnabled: boolean }> };
+  const status = {
+    configured: db ? await hasProviderApiKey("resend") : false,
+    directDeliveryActive: true,
+    updatedAt: null as Date | null,
+    fromEmail: "",
+    publicSiteUrl: DEFAULT_PUBLIC_URL,
+    domains: [] as Array<{ name: string; status: string; sendingEnabled: boolean }>,
+  };
   if (!db) return status;
   const [keyStatus] = await db.select().from(providerCredentials).where(eq(providerCredentials.provider, "resend")).limit(1);
   const [settings] = await db.select().from(storeSettings).where(eq(storeSettings.id, 1)).limit(1);

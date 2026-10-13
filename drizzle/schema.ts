@@ -26,6 +26,7 @@ export const activationServices = pgTable("activation_services", {
   providerServiceId: varchar("providerServiceId", { length: 128 }).notNull().default(""),
   name: varchar("name", { length: 255 }).notNull(),
   description: text("description"),
+  customDescription: text("customDescription"),
   supplierPrice: doublePrecision("supplierPrice").notNull().default(0),
   supplierCurrency: varchar("supplierCurrency", { length: 8 }).notNull().default(""),
   providerRate: doublePrecision("providerRate").notNull().default(0),

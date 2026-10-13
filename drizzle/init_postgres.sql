@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS activation_services (
   "providerServiceId" VARCHAR(128) NOT NULL DEFAULT '',
   name VARCHAR(255) NOT NULL,
   description TEXT,
+  "customDescription" TEXT,
   "supplierPrice" DOUBLE PRECISION NOT NULL DEFAULT 0,
   "supplierCurrency" VARCHAR(8) NOT NULL DEFAULT '',
   "providerRate" DOUBLE PRECISION NOT NULL DEFAULT 0,

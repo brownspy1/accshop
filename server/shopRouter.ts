@@ -151,9 +151,16 @@ export const shopRouter = router({
         const { supplierPrice: _cost, supplierCurrency: _currency, providerRate: _rate, providerServiceId: _providerId,
           provider: _provider, pricingTiers: _tiers, priceMarkupRatio: _markupRatio, reservedStock, stock, lastStockSyncedAt, ...item } = row;
         const stockAge = lastStockSyncedAt ? Date.now() - new Date(lastStockSyncedAt).getTime() : Number.POSITIVE_INFINITY;
-        return [{ ...item, stock: Math.max(0, stock - reservedStock), stockSyncedAt: lastStockSyncedAt,
+        return [{
+          ...item,
+          description: row.customDescription || row.description,
+          customDescription: row.customDescription,
+          stock: Math.max(0, stock - reservedStock),
+          stockSyncedAt: lastStockSyncedAt,
           stockFresh: stockAge >= 0 && stockAge <= SUPPLIER_STOCK_MAX_AGE_MS,
-          quantityTiers: tiers, maxAllowedQuantity }];
+          quantityTiers: tiers,
+          maxAllowedQuantity,
+        }];
       });
     }),
     storeInfo: publicProcedure.query(async () => {
@@ -248,7 +255,12 @@ export const shopRouter = router({
           let verificationToken: string | null = null;
           if (existingAccount) {
             customerAccountId = existingAccount.id;
-            await tx.update(customerAccounts).set({ name: input.customerName.trim(), phone: input.customerPhone.trim(), updatedAt: new Date() }).where(eq(customerAccounts.id, existingAccount.id));
+            await tx.update(customerAccounts).set({
+              name: input.customerName.trim(),
+              phone: input.customerPhone.trim(),
+              emailVerifiedAt: existingAccount.emailVerifiedAt ?? new Date(),
+              updatedAt: new Date(),
+            }).where(eq(customerAccounts.id, existingAccount.id));
             const tokenStillValid = existingAccount.magicTokenHash && existingAccount.magicTokenExpiresAt && new Date(existingAccount.magicTokenExpiresAt).getTime() > Date.now();
             if (!existingAccount.emailVerifiedAt && !tokenStillValid) {
               const token = newMagicToken();
@@ -257,7 +269,15 @@ export const shopRouter = router({
             }
           } else {
             const token = newMagicToken();
-            const insertedCustomer = await tx.insert(customerAccounts).values({ email, name: input.customerName.trim(), phone: input.customerPhone.trim(), magicTokenHash: token.hash, magicTokenExpiresAt: token.expiresAt, magicTokenPurpose: "verify" }).returning({ id: customerAccounts.id });
+            const insertedCustomer = await tx.insert(customerAccounts).values({
+              email,
+              name: input.customerName.trim(),
+              phone: input.customerPhone.trim(),
+              emailVerifiedAt: new Date(),
+              magicTokenHash: token.hash,
+              magicTokenExpiresAt: token.expiresAt,
+              magicTokenPurpose: "verify",
+            }).returning({ id: customerAccounts.id });
             customerAccountId = mysqlInsertId(insertedCustomer);
             if (!customerAccountId) throw new Error("Customer profile identifier পাওয়া যায়নি; checkout transaction বাতিল করা হয়েছে।");
             verificationToken = token.token;
@@ -299,7 +319,7 @@ export const shopRouter = router({
               paymentAccount: payment.account,
               paymentInstructions: s.paymentInstructions ?? "",
               supportContact: s.supportContact ?? "",
-              accountNotice: "আপনার email-এর সঙ্গে customer profile যুক্ত হয়েছে। Account link পেতে /account-এ email দিয়ে link চান; verified email ছাড়া order history/codes দেখা যাবে না।",
+              accountNotice: "আপনার অর্ডার সফলভাবে তৈরি হয়েছে। /track পেজে Order Code ও Phone দিয়ে সরাসরি অর্ডার ও ডেলিভারি কোড দেখতে পারবেন।",
             },
           };
         });
@@ -330,11 +350,17 @@ export const shopRouter = router({
         totalAmount: order.totalAmount,
         currency: order.currency,
         createdAt: order.createdAt,
-        items: lines.map(line => ({
-          serviceName: line.serviceName,
-          quantity: line.quantity,
-          fulfillmentState: line.fulfillmentState,
-        })),
+        items: lines.map(line => {
+          const codes = (order.status === "fulfilled" || line.fulfillmentState === "fulfilled")
+            ? safelyParseCodes(line.resultCodes)
+            : [];
+          return {
+            serviceName: line.serviceName,
+            quantity: line.quantity,
+            fulfillmentState: line.fulfillmentState,
+            codes,
+          };
+        }),
       };
     }),
   }),
@@ -371,6 +397,7 @@ export const shopRouter = router({
         retailPrice: z.number().min(0).max(10_000_000),
         isListed: z.boolean(),
         confirmPriceReview: z.boolean().default(false),
+        customDescription: z.string().max(10_000).nullable().optional(),
       })).mutation(async ({ input }) => {
         const db = await getDb();
         if (!db) throw new Error("Database is not available");
@@ -383,8 +410,17 @@ export const shopRouter = router({
         const priceMarkupRatio = markupRatioForManualRetailPrice(input.retailPrice, cost, pricingRates);
         const needsInitialManualReview = input.retailPrice > 0 && row.retailPrice <= 0 && (row.supplierPrice <= 0 || priceMarkupRatio <= 0);
         if (input.isListed && (row.priceReviewRequired === 1 || needsInitialManualReview) && !input.confirmPriceReview) throw new Error("Supplier cost/currency আগে review করুন; তারপর 'দাম যাচাই করেছি' নির্বাচন করুন।");
-        await db.update(activationServices).set({ retailPrice: input.retailPrice, isListed: input.isListed ? 1 : 0,
-          priceMarkupRatio, priceReviewRequired: input.confirmPriceReview ? 0 : needsInitialManualReview ? 1 : row.priceReviewRequired, updatedAt: new Date() }).where(eq(activationServices.serviceKey, input.serviceKey));
+        const updateValues: Record<string, unknown> = {
+          retailPrice: input.retailPrice,
+          isListed: input.isListed ? 1 : 0,
+          priceMarkupRatio,
+          priceReviewRequired: input.confirmPriceReview ? 0 : needsInitialManualReview ? 1 : row.priceReviewRequired,
+          updatedAt: new Date(),
+        };
+        if (input.customDescription !== undefined) {
+          updateValues.customDescription = input.customDescription?.trim() ? input.customDescription.trim() : null;
+        }
+        await db.update(activationServices).set(updateValues).where(eq(activationServices.serviceKey, input.serviceKey));
         return { success: true };
       }),
     }),
@@ -462,8 +498,10 @@ export const shopRouter = router({
           const account = await verifyAndSaveCouponShopsKey(input.apiKey);
           return { success: true, provider: input.provider, amount: account.balanceUsdt, currency: "USDT", balanceInr: account.balanceInr, rateInrPerUsdt: account.rateInrPerUsdt, username: "" };
         } catch (error) {
+          console.error(`[Provider Configure Error (${input.provider})]:`, error);
           if (error instanceof AcczoneError || error instanceof CouponShopsError) throw new Error(error.message);
-          throw new Error(`${input.provider} API key যাচাই/সংরক্ষণ হয়নি। Settings-এ key পরীক্ষা করে আবার চেষ্টা করুন।`);
+          const message = error instanceof Error ? error.message : String(error);
+          throw new Error(`${input.provider} API key যাচাই/সংরক্ষণ ব্যর্থ হয়েছে: ${message}`);
         }
       }),
       balance: adminProcedure.input(z.object({ provider: z.enum(["acczone", "couponshops"]) })).query(async ({ input }) => {
@@ -487,8 +525,10 @@ export const shopRouter = router({
           const account = await testAndSaveApiKey(input.apiKey);
           return { success: true, balance: account.balance, username: account.username };
         } catch (error) {
+          console.error("[AccZone Configure Error]:", error);
           if (error instanceof AcczoneError) throw new Error(error.message);
-          throw new Error("API key যাচাই/সংরক্ষণ হয়নি। Settings-এ key পরীক্ষা করুন এবং আবার চেষ্টা করুন।");
+          const message = error instanceof Error ? error.message : String(error);
+          throw new Error(`AccZone API key যাচাই/সংরক্ষণ ব্যর্থ হয়েছে: ${message}`);
         }
       }),
       balance: adminProcedure.query(async () => {

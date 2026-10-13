@@ -2,7 +2,7 @@ import { BrandMark } from "@/components/StoreHeader";
 import { startLogin } from "@/const";
 import { trpc } from "@/lib/trpc";
 import { formatMoney, orderStatusLabels } from "@/lib/shop";
-import { Activity, AlertTriangle, ArrowDownRight, ArrowLeft, ArrowRight, BadgeCheck, Banknote, Boxes, Check, CheckCircle2, ChevronDown, ChevronRight, CircleDollarSign, ClipboardList, Clock3, CreditCard, ExternalLink, Eye, EyeOff, ImagePlus, KeyRound, LayoutDashboard, LoaderCircle, LogOut, Mail, PackageCheck, RefreshCw, Save, Search, Settings2, ShieldCheck, ShoppingBag, Store, TrendingUp, Wallet, X } from "lucide-react";
+import { Activity, AlertTriangle, ArrowDownRight, ArrowLeft, ArrowRight, BadgeCheck, Banknote, Boxes, Check, CheckCircle2, ChevronDown, ChevronRight, CircleDollarSign, ClipboardList, Clock3, CreditCard, ExternalLink, Eye, EyeOff, FileText, ImagePlus, KeyRound, LayoutDashboard, LoaderCircle, LogOut, Mail, PackageCheck, RefreshCw, Save, Search, Settings2, ShieldCheck, ShoppingBag, Store, TrendingUp, Wallet, X } from "lucide-react";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { Link } from "wouter";
 import { toast } from "sonner";
@@ -146,17 +146,19 @@ async function compressProductImage(file: File): Promise<Blob> {
   } finally { bitmap.close(); }
 }
 
-type ServiceRowInput = { serviceKey: string; provider: string; providerServiceId: string; name: string; description: string | null; supplierPrice: number; supplierCurrency: string; providerRate: number; pricingTiers: string | null; stock: number; reservedStock: number; isActive: number; isListed: number; retailPrice: number; imageUrl: string | null; lastStockSyncedAt: Date | null; priceReviewRequired: number; priceMarkupRatio: number };
+type ServiceRowInput = { serviceKey: string; provider: string; providerServiceId: string; name: string; description: string | null; customDescription?: string | null; supplierPrice: number; supplierCurrency: string; providerRate: number; pricingTiers: string | null; stock: number; reservedStock: number; isActive: number; isListed: number; retailPrice: number; imageUrl: string | null; lastStockSyncedAt: Date | null; priceReviewRequired: number; priceMarkupRatio: number };
 function ServiceRow({ item }: { item: ServiceRowInput }) {
   const utils = trpc.useUtils();
   const [price, setPrice] = useState(String(item.retailPrice || ""));
   const [listed, setListed] = useState(Boolean(item.isListed));
   const [reviewConfirmed, setReviewConfirmed] = useState(false);
+  const [customDesc, setCustomDesc] = useState(item.customDescription || "");
+  const [editDescOpen, setEditDescOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const needsPriceReview = item.priceReviewRequired === 1 || (Number(price) > 0 && item.retailPrice <= 0 && (item.supplierPrice <= 0 || item.priceMarkupRatio === 0));
   const save = trpc.shop.admin.services.update.useMutation({ onSuccess: () => { toast.success(reviewConfirmed ? "দাম save এবং review complete হয়েছে" : "Service update হয়েছে"); void utils.shop.admin.services.list.invalidate(); void utils.shop.catalog.list.invalidate(); }, onError: error => toast.error(error.message) });
-  useEffect(() => { setPrice(String(item.retailPrice || "")); setListed(Boolean(item.isListed)); setReviewConfirmed(false); }, [item.retailPrice, item.isListed, item.priceReviewRequired]);
+  useEffect(() => { setPrice(String(item.retailPrice || "")); setListed(Boolean(item.isListed)); setReviewConfirmed(false); setCustomDesc(item.customDescription || ""); }, [item.retailPrice, item.isListed, item.priceReviewRequired, item.customDescription]);
   const available = Math.max(0, item.stock - item.reservedStock);
   let tiers: Array<{ minQuantity: number; maxQuantity: number; priceInr: number; priceUsdt: number }> = [];
   try { const parsed: unknown = item.pricingTiers ? JSON.parse(item.pricingTiers) : []; if (Array.isArray(parsed)) tiers = parsed as typeof tiers; } catch { tiers = []; }
@@ -179,7 +181,27 @@ function ServiceRow({ item }: { item: ServiceRowInput }) {
       <div><b>{item.name}</b><small>{item.provider} · {item.providerServiceId || item.serviceKey}</small>
         <div className="image-upload-control"><input ref={fileRef} hidden type="file" accept="image/jpeg,image/png,image/webp" onChange={event => { const selected = event.target.files?.[0]; if (selected) void upload(selected); event.currentTarget.value = ""; }} /><button type="button" className="text-link" onClick={() => fileRef.current?.click()} disabled={uploading}>{uploading ? <LoaderCircle size={12} className="spin" /> : <ImagePlus size={12} />}{item.imageUrl ? "Change image" : "Add image"}</button></div>
         {needsPriceReview && <small className="price-review-flag"><AlertTriangle size={12} /> দাম যাচাই দরকার · FX rate বা retail price দিন</small>}
-        {item.description && <details><summary>Description</summary><p>{item.description.slice(0, 500)}</p></details>}
+        <div className="custom-desc-trigger">
+          <button type="button" className="text-link" onClick={() => setEditDescOpen(!editDescOpen)}>
+            <FileText size={12} />
+            {item.customDescription ? "Edit custom description" : "Customize description"}
+          </button>
+          {item.customDescription && <span className="custom-desc-badge">Reseller version</span>}
+        </div>
+        {editDescOpen && <div className="custom-desc-box">
+          <label className="field" style={{ margin: 0 }}>
+            <b>Storefront Description (Reseller Version)</b>
+            <textarea rows={3} value={customDesc} onChange={e => setCustomDesc(e.target.value)} placeholder="সার্ভিসের নিজস্ব বিবরণ, সুবিধা বা শর্তাবলী লিখুন..." />
+          </label>
+          <div className="desc-actions">
+            <button type="button" className="button button-sm button-primary" onClick={() => { save.mutate({ serviceKey: item.serviceKey, retailPrice: Number(price || 0), isListed: listed, confirmPriceReview: reviewConfirmed, customDescription: customDesc.trim() || null }); setEditDescOpen(false); }} disabled={save.isPending}>Save description</button>
+            {item.customDescription && <button type="button" className="button button-sm button-light" onClick={() => { setCustomDesc(""); save.mutate({ serviceKey: item.serviceKey, retailPrice: Number(price || 0), isListed: listed, confirmPriceReview: reviewConfirmed, customDescription: null }); setEditDescOpen(false); }} disabled={save.isPending}>Reset to supplier</button>}
+            <button type="button" className="button button-sm button-light" onClick={() => setEditDescOpen(false)}>Close</button>
+          </div>
+          {item.description && <details className="supplier-desc-reference"><summary>Original Supplier Description (Reference)</summary><p>{item.description}</p></details>}
+        </div>}
+        {!editDescOpen && item.customDescription && <details><summary>Custom description (active)</summary><p>{item.customDescription}</p></details>}
+        {!editDescOpen && !item.customDescription && item.description && <details><summary>Supplier description</summary><p>{item.description.slice(0, 500)}</p></details>}
         {tiers.length > 0 && <details><summary>{tiers.length} supplier quantity slab{tiers.length > 1 ? "s" : ""}</summary><p>{tiers.map(tier => `${tier.minQuantity}–${tier.maxQuantity}: ₹${tier.priceInr} / ${tier.priceUsdt} USDT`).join(" · ")} · 1 USDT = ₹{item.providerRate}</p></details>}
       </div>
     </div>
@@ -188,7 +210,7 @@ function ServiceRow({ item }: { item: ServiceRowInput }) {
     <label className="retail-input"><input type="number" min="0" max="10000000" step="0.01" value={price} onChange={event => setPrice(event.target.value)} aria-label={`${item.name} retail price`} placeholder="0.00" /><small>{item.priceMarkupRatio > 0 ? `Retail · ×${item.priceMarkupRatio.toFixed(2)} markup` : "Retail price"}</small></label>
     <button type="button" className={`toggle-switch ${listed ? "on" : ""}`} onClick={() => setListed(!listed)} aria-pressed={listed} disabled={!item.isActive || available < 1 || Number(price) <= 0} aria-label="Storefront visibility"><i /></button>
     {needsPriceReview && <label className="price-review-confirm"><input type="checkbox" checked={reviewConfirmed} onChange={event => setReviewConfirmed(event.target.checked)} /><span>Supplier cost, currency ও retail price যাচাই করেছি</span></label>}
-    <button className="icon-save" title={needsPriceReview ? "Save price and mark reviewed" : "Save service"} onClick={() => save.mutate({ serviceKey: item.serviceKey, retailPrice: Number(price || 0), isListed: listed, confirmPriceReview: reviewConfirmed })} disabled={save.isPending || (needsPriceReview && listed && !reviewConfirmed)}><Save size={15} /></button>
+    <button className="icon-save" title={needsPriceReview ? "Save price and mark reviewed" : "Save service"} onClick={() => save.mutate({ serviceKey: item.serviceKey, retailPrice: Number(price || 0), isListed: listed, confirmPriceReview: reviewConfirmed, customDescription: customDesc.trim() || null })} disabled={save.isPending || (needsPriceReview && listed && !reviewConfirmed)}><Save size={15} /></button>
   </div>;
 }
 
