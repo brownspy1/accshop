@@ -257,7 +257,7 @@ export const shopRouter = router({
             }
           } else {
             const token = newMagicToken();
-            const insertedCustomer = await tx.insert(customerAccounts).values({ email, name: input.customerName.trim(), phone: input.customerPhone.trim(), magicTokenHash: token.hash, magicTokenExpiresAt: token.expiresAt, magicTokenPurpose: "verify" });
+            const insertedCustomer = await tx.insert(customerAccounts).values({ email, name: input.customerName.trim(), phone: input.customerPhone.trim(), magicTokenHash: token.hash, magicTokenExpiresAt: token.expiresAt, magicTokenPurpose: "verify" }).returning({ id: customerAccounts.id });
             customerAccountId = mysqlInsertId(insertedCustomer);
             if (!customerAccountId) throw new Error("Customer profile identifier পাওয়া যায়নি; checkout transaction বাতিল করা হয়েছে।");
             verificationToken = token.token;
@@ -277,7 +277,7 @@ export const shopRouter = router({
             paymentAccount: payment.account,
             paymentInstructions: s.paymentInstructions ?? "",
             supportContact: s.supportContact ?? null,
-          });
+          }).returning({ id: orders.id });
           const orderId = mysqlInsertId(inserted);
           if (!orderId) throw new Error("Order database identifier পাওয়া যায়নি; transaction বাতিল করা হয়েছে।");
           await tx.insert(orderItems).values(lines.map(({ product, quantity, tier }) => ({
@@ -423,7 +423,10 @@ export const shopRouter = router({
             || previous.inrToStoreRate !== input.inrToStoreRate
             || previous.usdtToStoreRate !== input.usdtToStoreRate
             || previous.acczoneUnitToStoreRate !== input.acczoneUnitToStoreRate));
-          await tx.insert(storeSettings).values({ id: 1, ...input }).onDuplicateKeyUpdate({ set: { ...input, updatedAt: new Date() } });
+          await tx.insert(storeSettings).values({ id: 1, ...input }).onConflictDoUpdate({
+            target: storeSettings.id,
+            set: { ...input, updatedAt: new Date() },
+          });
           if (pricingChanged) await tx.update(activationServices).set({ priceReviewRequired: 1, updatedAt: new Date() }).where(gt(activationServices.retailPrice, 0));
         });
         return { success: true };

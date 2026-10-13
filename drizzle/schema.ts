@@ -1,94 +1,102 @@
-import { double, foreignKey, index, int, mysqlEnum, mysqlTable, text, timestamp, varchar } from "drizzle-orm/mysql-core";
+import { doublePrecision, foreignKey, index, integer, pgEnum, pgTable, serial, text, timestamp, varchar } from "drizzle-orm/pg-core";
 
-export const users = mysqlTable("users", {
-  id: int("id").autoincrement().primaryKey(),
+export const roleEnum = pgEnum("user_role", ["user", "admin"]);
+export const magicTokenPurposeEnum = pgEnum("magic_token_purpose", ["verify", "login"]);
+export const paymentMethodEnum = pgEnum("payment_method", ["bkash", "nagad", "bank"]);
+export const orderStatusEnum = pgEnum("order_status", ["awaiting_payment", "paid", "fulfilling", "fulfilled", "partially_fulfilled", "fulfillment_unknown", "fulfillment_failed", "cancelled"]);
+export const fulfillmentStateEnum = pgEnum("fulfillment_state", ["pending", "processing", "fulfilled", "failed", "unknown"]);
+export const emailKindEnum = pgEnum("email_kind", ["verify", "login", "delivery"]);
+export const emailStatusEnum = pgEnum("email_status", ["pending", "sending", "sent", "failed", "unknown"]);
+
+export const users = pgTable("users", {
+  id: serial("id").primaryKey(),
   openId: varchar("openId", { length: 64 }).notNull().unique(),
   name: text("name"),
   email: varchar("email", { length: 320 }),
   loginMethod: varchar("loginMethod", { length: 64 }),
-  role: mysqlEnum("role", ["user", "admin"]).default("user").notNull(),
+  role: roleEnum("role").default("user").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
 });
 
-export const activationServices = mysqlTable("activation_services", {
+export const activationServices = pgTable("activation_services", {
   serviceKey: varchar("serviceKey", { length: 128 }).primaryKey(),
   provider: varchar("provider", { length: 32 }).notNull().default("acczone"),
   providerServiceId: varchar("providerServiceId", { length: 128 }).notNull().default(""),
   name: varchar("name", { length: 255 }).notNull(),
   description: text("description"),
-  supplierPrice: double("supplierPrice").notNull().default(0),
+  supplierPrice: doublePrecision("supplierPrice").notNull().default(0),
   supplierCurrency: varchar("supplierCurrency", { length: 8 }).notNull().default(""),
-  providerRate: double("providerRate").notNull().default(0),
+  providerRate: doublePrecision("providerRate").notNull().default(0),
   pricingTiers: text("pricingTiers"),
-  stock: int("stock").notNull().default(0),
-  reservedStock: int("reservedStock").notNull().default(0),
+  stock: integer("stock").notNull().default(0),
+  reservedStock: integer("reservedStock").notNull().default(0),
   imageUrl: varchar("imageUrl", { length: 2048 }).notNull().default(""),
   lastStockSyncedAt: timestamp("lastStockSyncedAt"),
-  isActive: int("isActive").notNull().default(0),
-  isListed: int("isListed").notNull().default(0),
-  retailPrice: double("retailPrice").notNull().default(0),
-  priceMarkupRatio: double("priceMarkupRatio").notNull().default(0),
-  priceReviewRequired: int("priceReviewRequired").notNull().default(0),
+  isActive: integer("isActive").notNull().default(0),
+  isListed: integer("isListed").notNull().default(0),
+  retailPrice: doublePrecision("retailPrice").notNull().default(0),
+  priceMarkupRatio: doublePrecision("priceMarkupRatio").notNull().default(0),
+  priceReviewRequired: integer("priceReviewRequired").notNull().default(0),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });
 
-export const providerCredentials = mysqlTable("provider_credentials", {
-  id: int("id").autoincrement().primaryKey(),
+export const providerCredentials = pgTable("provider_credentials", {
+  id: serial("id").primaryKey(),
   provider: varchar("provider", { length: 32 }).notNull().default("acczone").unique(),
   ciphertext: text("ciphertext").notNull(),
   nonce: varchar("nonce", { length: 32 }).notNull(),
   authTag: varchar("authTag", { length: 32 }).notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });
 
-export const storeSettings = mysqlTable("store_settings", {
-  id: int("id").primaryKey(),
+export const storeSettings = pgTable("store_settings", {
+  id: integer("id").primaryKey().default(1),
   currency: varchar("currency", { length: 8 }).notNull().default("BDT"),
   paymentInstructions: text("paymentInstructions"),
   bkashNumber: varchar("bkashNumber", { length: 64 }),
   nagadNumber: varchar("nagadNumber", { length: 64 }),
   bankDetails: text("bankDetails"),
   supportContact: varchar("supportContact", { length: 160 }),
-  inrToStoreRate: double("inrToStoreRate").notNull().default(0),
-  usdtToStoreRate: double("usdtToStoreRate").notNull().default(0),
-  acczoneUnitToStoreRate: double("acczoneUnitToStoreRate").notNull().default(0),
+  inrToStoreRate: doublePrecision("inrToStoreRate").notNull().default(0),
+  usdtToStoreRate: doublePrecision("usdtToStoreRate").notNull().default(0),
+  acczoneUnitToStoreRate: doublePrecision("acczoneUnitToStoreRate").notNull().default(0),
   resendFromEmail: varchar("resendFromEmail", { length: 320 }).notNull().default(""),
   publicSiteUrl: varchar("publicSiteUrl", { length: 512 }).notNull().default(""),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });
 
-export const customerAccounts = mysqlTable("shop_customer_accounts", {
-  id: int("id").autoincrement().primaryKey(),
+export const customerAccounts = pgTable("shop_customer_accounts", {
+  id: serial("id").primaryKey(),
   email: varchar("email", { length: 320 }).notNull().unique(),
   name: varchar("name", { length: 160 }).notNull(),
   phone: varchar("phone", { length: 64 }).notNull().default(""),
   emailVerifiedAt: timestamp("emailVerifiedAt"),
   magicTokenHash: varchar("magicTokenHash", { length: 64 }),
   magicTokenExpiresAt: timestamp("magicTokenExpiresAt"),
-  magicTokenPurpose: mysqlEnum("magicTokenPurpose", ["verify", "login"]),
+  magicTokenPurpose: magicTokenPurposeEnum("magicTokenPurpose"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });
 
-export const orders = mysqlTable("shop_orders", {
-  id: int("id").autoincrement().primaryKey(),
+export const orders = pgTable("shop_orders", {
+  id: serial("id").primaryKey(),
   orderNo: varchar("orderNo", { length: 32 }).notNull().unique(),
   idempotencyKey: varchar("idempotencyKey", { length: 64 }).unique(),
   customerName: varchar("customerName", { length: 160 }).notNull(),
   customerEmail: varchar("customerEmail", { length: 320 }).notNull(),
   customerPhone: varchar("customerPhone", { length: 64 }).notNull(),
-  customerAccountId: int("customerAccountId"),
-  paymentMethod: mysqlEnum("paymentMethod", ["bkash", "nagad", "bank"]).notNull(),
+  customerAccountId: integer("customerAccountId"),
+  paymentMethod: paymentMethodEnum("paymentMethod").notNull(),
   paymentReference: varchar("paymentReference", { length: 160 }),
-  totalAmount: double("totalAmount").notNull(),
+  totalAmount: doublePrecision("totalAmount").notNull(),
   currency: varchar("currency", { length: 8 }).notNull().default("BDT"),
-  status: mysqlEnum("status", ["awaiting_payment", "paid", "fulfilling", "fulfilled", "partially_fulfilled", "fulfillment_unknown", "fulfillment_failed", "cancelled"]).notNull().default("awaiting_payment"),
+  status: orderStatusEnum("status").notNull().default("awaiting_payment"),
   adminNote: text("adminNote"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
   paymentAccount: varchar("paymentAccount", { length: 2048 }).notNull().default(""),
   paymentInstructions: varchar("paymentInstructions", { length: 2000 }).notNull().default(""),
   supportContact: varchar("supportContact", { length: 160 }),
@@ -97,45 +105,45 @@ export const orders = mysqlTable("shop_orders", {
   customerAccountFk: foreignKey({ columns: [table.customerAccountId], foreignColumns: [customerAccounts.id], name: "shop_orders_customer_account_fk" }).onDelete("set null"),
 }));
 
-export const orderItems = mysqlTable("shop_order_items", {
-  id: int("id").autoincrement().primaryKey(),
-  orderId: int("orderId").notNull(),
+export const orderItems = pgTable("shop_order_items", {
+  id: serial("id").primaryKey(),
+  orderId: integer("orderId").notNull(),
   serviceKey: varchar("serviceKey", { length: 128 }).notNull(),
   serviceName: varchar("serviceName", { length: 255 }).notNull(),
   provider: varchar("provider", { length: 32 }).notNull().default("acczone"),
   providerServiceId: varchar("providerServiceId", { length: 128 }).notNull().default(""),
-  quantity: int("quantity").notNull(),
-  unitPrice: double("unitPrice").notNull(),
-  supplierCostInr: double("supplierCostInr").notNull().default(0),
-  supplierCostUsdt: double("supplierCostUsdt").notNull().default(0),
-  supplierRate: double("supplierRate").notNull().default(0),
+  quantity: integer("quantity").notNull(),
+  unitPrice: doublePrecision("unitPrice").notNull(),
+  supplierCostInr: doublePrecision("supplierCostInr").notNull().default(0),
+  supplierCostUsdt: doublePrecision("supplierCostUsdt").notNull().default(0),
+  supplierRate: doublePrecision("supplierRate").notNull().default(0),
   providerClientOrderId: varchar("providerClientOrderId", { length: 128 }).unique(),
   providerOrderId: varchar("providerOrderId", { length: 128 }),
   providerStatus: varchar("providerStatus", { length: 32 }),
-  fulfillmentState: mysqlEnum("fulfillmentState", ["pending", "processing", "fulfilled", "failed", "unknown"]).notNull().default("pending"),
+  fulfillmentState: fulfillmentStateEnum("fulfillmentState").notNull().default("pending"),
   resultCodes: text("resultCodes"),
   providerMessage: varchar("providerMessage", { length: 500 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 }, table => ({
   orderIdx: index("shop_order_items_order_id_idx").on(table.orderId),
   orderFk: foreignKey({ columns: [table.orderId], foreignColumns: [orders.id], name: "shop_order_items_order_fk" }).onDelete("cascade"),
 }));
 
-export const emailOutbox = mysqlTable("shop_email_outbox", {
-  id: int("id").autoincrement().primaryKey(),
+export const emailOutbox = pgTable("shop_email_outbox", {
+  id: serial("id").primaryKey(),
   dedupeKey: varchar("dedupeKey", { length: 192 }).notNull().unique(),
   idempotencyKey: varchar("idempotencyKey", { length: 128 }).notNull().unique(),
-  kind: mysqlEnum("kind", ["verify", "login", "delivery"]).notNull(),
-  status: mysqlEnum("status", ["pending", "sending", "sent", "failed", "unknown"]).notNull().default("pending"),
-  customerAccountId: int("customerAccountId").notNull(),
-  orderId: int("orderId"),
+  kind: emailKindEnum("kind").notNull(),
+  status: emailStatusEnum("status").notNull().default("pending"),
+  customerAccountId: integer("customerAccountId").notNull(),
+  orderId: integer("orderId"),
   recipientEmail: varchar("recipientEmail", { length: 320 }).notNull(),
   messageId: varchar("messageId", { length: 128 }),
-  attempts: int("attempts").notNull().default(0),
+  attempts: integer("attempts").notNull().default(0),
   lastErrorCode: varchar("lastErrorCode", { length: 80 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
   sentAt: timestamp("sentAt"),
 }, table => ({
   customerIdx: index("shop_email_outbox_customer_idx").on(table.customerAccountId),

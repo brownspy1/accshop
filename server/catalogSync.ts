@@ -59,13 +59,16 @@ async function performSync(provider: ShopProvider): Promise<SyncResult> {
         stock: item.stock, isActive: item.isActive, lastStockSyncedAt: now,
         retailPrice: pricing.retailPrice, priceMarkupRatio: pricing.priceMarkupRatio,
         priceReviewRequired: pricing.priceReviewRequired,
-      }).onDuplicateKeyUpdate({ set: {
-        provider: "acczone", providerServiceId: item.key, name: item.name,
-        description: item.description, supplierPrice: item.price, supplierCurrency: "ACC",
-        providerRate: 0, pricingTiers: null, stock: item.stock, isActive: item.isActive,
-        retailPrice: pricing.retailPrice, priceMarkupRatio: pricing.priceMarkupRatio,
-        priceReviewRequired: pricing.priceReviewRequired, lastStockSyncedAt: now, updatedAt: now,
-      } });
+      }).onConflictDoUpdate({
+        target: activationServices.serviceKey,
+        set: {
+          provider: "acczone", providerServiceId: item.key, name: item.name,
+          description: item.description, supplierPrice: item.price, supplierCurrency: "ACC",
+          providerRate: 0, pricingTiers: null, stock: item.stock, isActive: item.isActive,
+          retailPrice: pricing.retailPrice, priceMarkupRatio: pricing.priceMarkupRatio,
+          priceReviewRequired: pricing.priceReviewRequired, lastStockSyncedAt: now, updatedAt: now,
+        },
+      });
       synced += 1;
       if (item.isActive === 1 && item.stock > 0) active += 1;
     }
@@ -93,13 +96,16 @@ async function performSync(provider: ShopProvider): Promise<SyncResult> {
         stock: item.stock, isActive: 1, lastStockSyncedAt: now,
         retailPrice: pricing.retailPrice, priceMarkupRatio: pricing.priceMarkupRatio,
         priceReviewRequired: pricing.priceReviewRequired,
-      }).onDuplicateKeyUpdate({ set: {
-        provider: "couponshops", providerServiceId: item.serviceId, name: item.name,
-        supplierPrice, supplierCurrency: "USDT", providerRate: item.rateInrPerUsdt,
-        pricingTiers: JSON.stringify(item.tiers), stock: item.stock, isActive: 1,
-        retailPrice: pricing.retailPrice, priceMarkupRatio: pricing.priceMarkupRatio,
-        priceReviewRequired: pricing.priceReviewRequired, lastStockSyncedAt: now, updatedAt: now,
-      } });
+      }).onConflictDoUpdate({
+        target: activationServices.serviceKey,
+        set: {
+          provider: "couponshops", providerServiceId: item.serviceId, name: item.name,
+          supplierPrice, supplierCurrency: "USDT", providerRate: item.rateInrPerUsdt,
+          pricingTiers: JSON.stringify(item.tiers), stock: item.stock, isActive: 1,
+          retailPrice: pricing.retailPrice, priceMarkupRatio: pricing.priceMarkupRatio,
+          priceReviewRequired: pricing.priceReviewRequired, lastStockSyncedAt: now, updatedAt: now,
+        },
+      });
       synced += 1;
       if (item.stock > 0) active += 1;
     }

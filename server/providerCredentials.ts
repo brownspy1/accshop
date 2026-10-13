@@ -77,7 +77,8 @@ export async function verifyAndSaveProviderApiKey<T>(
   const encrypted = encrypt(provider, apiKey);
   const db = await getDb();
   if (!db) throw new Error("Database is not available");
-  await db.insert(providerCredentials).values({ provider, ...encrypted }).onDuplicateKeyUpdate({
+  await db.insert(providerCredentials).values({ provider, ...encrypted }).onConflictDoUpdate({
+    target: providerCredentials.provider,
     set: { ...encrypted, updatedAt: new Date() },
   });
   return verified;

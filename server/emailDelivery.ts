@@ -84,7 +84,10 @@ async function sendTracked(input: {
       orderId: input.orderId ?? null,
       recipientEmail: input.recipient,
       attempts: 0,
-    }).onDuplicateKeyUpdate({ set: { updatedAt: new Date() } });
+    }).onConflictDoUpdate({
+      target: emailOutbox.dedupeKey,
+      set: { updatedAt: new Date() },
+    });
   } catch {
     return "failed";
   }
