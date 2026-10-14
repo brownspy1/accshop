@@ -2,7 +2,7 @@ import StoreHeader from "@/components/StoreHeader";
 import { useCart } from "@/contexts/CartContext";
 import { trpc } from "@/lib/trpc";
 import { formatMoney } from "@/lib/shop";
-import { AlertTriangle, ArrowLeft, ArrowRight, Building2, CheckCircle2, CreditCard, LockKeyhole, LoaderCircle, Minus, Plus, RefreshCw, ShieldCheck, Trash2 } from "lucide-react";
+import { AlertTriangle, ArrowLeft, ArrowRight, Building2, Check, CheckCircle2, Copy, CreditCard, LockKeyhole, LoaderCircle, Minus, Plus, RefreshCw, ShieldCheck, Trash2 } from "lucide-react";
 import { FormEvent, useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
 
@@ -28,6 +28,7 @@ export default function Checkout() {
   const activePaymentMethod = store?.paymentMethods?.some(method => method.id === paymentMethod)
     ? paymentMethod : store?.paymentMethods?.[0]?.id ?? paymentMethod;
   const [paymentReference, setPaymentReference] = useState("");
+  const [copiedAccount, setCopiedAccount] = useState<string | null>(null);
   const [placedOrder, setPlacedOrder] = useState<null | { orderNo: string; totalAmount: number; currency: string; paymentMethod: string; paymentAccount: string; paymentInstructions: string; supportContact: string }>(null);
   const [formError, setFormError] = useState("");
   const [stockRefreshRequired, setStockRefreshRequired] = useState(false);
@@ -101,14 +102,67 @@ export default function Checkout() {
           <div className="checkout-main">
             <section className="form-panel"><div className="panel-heading"><span className="panel-number">01</span><div><h2>যোগাযোগের তথ্য</h2><p>Checkout আপনার email দিয়ে customer profile তৈরি/আপডেট করবে।</p></div></div><div className="form-grid"><label className="field full-field">আপনার নাম<input required minLength={2} maxLength={160} autoComplete="name" value={name} onChange={e => setName(e.target.value)} placeholder="নাম লিখুন" /></label><label className="field">Email address<input required type="email" maxLength={320} autoComplete="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" /></label><label className="field">Phone number<input required type="tel" minLength={7} maxLength={64} autoComplete="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="01XXXXXXXXX" /></label><p className="account-checkout-note"><ShieldCheck size={14} /> Password পাঠানো হবে না। Sign-in link verify করলে account history ও completed codes দেখতে পারবেন; credential একসাথে email হবে।</p></div></section>
             <section className="form-panel"><div className="panel-heading"><span className="panel-number">02</span><div><h2>Manual payment</h2><p>নিচে shop admin-এর দেওয়া account-এ payment দিন।</p></div></div>
-              {store?.paymentMethods?.length ? <div className="payment-options">{store.paymentMethods.map(method => <label className={`payment-option ${activePaymentMethod === method.id ? "selected" : ""}`} key={method.id}><input type="radio" name="payment" value={method.id} checked={activePaymentMethod === method.id} onChange={() => setPaymentMethod(method.id)} /><span className="payment-option-icon">{method.id === "bank" ? <Building2 size={18} /> : <CreditCard size={18} />}</span><span><b>{method.label}</b><small>{method.account}</small></span><i className="radio-indicator" /></label>)}</div> : <div className="notice warning"><CreditCard size={16} /><span>Admin এখনো payment account configure করেননি; order submit করতে পারবেন না।</span></div>}
+              {store?.paymentMethods?.length ? <div className="payment-options">{store.paymentMethods.map(method => {
+                const isSelected = activePaymentMethod === method.id;
+                const isCopied = copiedAccount === method.account;
+                return (
+                  <label className={`payment-option ${isSelected ? "selected" : ""}`} key={method.id}>
+                    <input type="radio" name="payment" value={method.id} checked={isSelected} onChange={() => setPaymentMethod(method.id)} />
+                    <span className="payment-option-icon">{method.id === "bank" ? <Building2 size={18} /> : <CreditCard size={18} />}</span>
+                    <span className="payment-option-details">
+                      <b>{method.label}</b>
+                      <span className="account-row">
+                        <small>{method.account}</small>
+                        <button
+                          type="button"
+                          className={`account-copy-btn ${isCopied ? "copied" : ""}`}
+                          onClick={e => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            navigator.clipboard.writeText(method.account).then(() => {
+                              setCopiedAccount(method.account);
+                              setTimeout(() => setCopiedAccount(null), 2000);
+                            }).catch(() => {});
+                          }}
+                          title="নম্বর কপি করুন"
+                        >
+                          {isCopied ? <Check size={11} /> : <Copy size={11} />}
+                          <span>{isCopied ? "কপি হয়েছে" : "কপি"}</span>
+                        </button>
+                      </span>
+                    </span>
+                    <i className="radio-indicator" />
+                  </label>
+                );
+              })}</div> : <div className="notice warning"><CreditCard size={16} /><span>Admin এখনো payment account configure করেননি; order submit করতে পারবেন না।</span></div>}
               <label className="field">Transaction ID / reference <span className="optional">ঐচ্ছিক</span><input maxLength={160} value={paymentReference} onChange={e => setPaymentReference(e.target.value)} placeholder="Payment করে থাকলে reference লিখুন" /></label>
               {store?.paymentInstructions && <div className="payment-helper">{store.paymentInstructions}</div>}
               <div className="notice"><ShieldCheck size={16} /><span>এই ধাপে কোনো টাকা কাটা হবে না। Admin payment verify করার পর activation provider-এ purchase request যাবে।</span></div>
             </section>
           </div>
           <aside className="order-summary"><div className="summary-title"><h2>আপনার basket</h2><span>{items.reduce((sum, item) => sum + item.quantity, 0)}টি item</span></div>
-            {products.map(({ product, quantity }) => <div className="summary-product" key={product.serviceKey}>{product.imageUrl ? <img className="checkout-product-image" src={product.imageUrl} alt="" loading="lazy" /> : <div className="mini-product-mark">{product.serviceKey.slice(0, 2)}</div>}<div className="summary-product-info"><b>{product.name}</b><span>{formatMoney(product.retailPrice, store?.currency ?? "BDT")}</span>{Boolean(product.quantityTiers && product.quantityTiers.length > 0) && <small className="quantity-slab-hint">Supplier quantity slab applies</small>}{Boolean(product.priceReviewRequired) && <small className="price-review-flag"><AlertTriangle size={12} /> দামের review প্রয়োজন</small>}<div className="quantity-control"><button type="button" aria-label="কমিয়ে দিন" disabled={nextAllowedQuantity(product, quantity, -1) === quantity} onClick={() => setQuantity(product.serviceKey, nextAllowedQuantity(product, quantity, -1), product.maxAllowedQuantity)}><Minus size={12} /></button><span>{quantity}</span><button type="button" aria-label="বাড়িয়ে দিন" disabled={nextAllowedQuantity(product, quantity, 1) === quantity} onClick={() => setQuantity(product.serviceKey, nextAllowedQuantity(product, quantity, 1), product.maxAllowedQuantity)}><Plus size={12} /></button><button type="button" className="remove-item" aria-label="সরান" onClick={() => remove(product.serviceKey)}><Trash2 size={12} /></button></div></div><strong>{formatMoney(product.retailPrice * quantity, store?.currency ?? "BDT")}</strong></div>)}
+            {products.map(({ product, quantity }) => (
+              <div className="summary-product" key={product.serviceKey}>
+                {product.imageUrl ? <img className="checkout-product-image" src={product.imageUrl} alt="" loading="lazy" /> : <div className="mini-product-mark">{product.serviceKey.slice(0, 2)}</div>}
+                <div className="summary-product-info">
+                  <b>{product.name}</b>
+                  <span>{formatMoney(product.retailPrice, store?.currency ?? "BDT")}</span>
+                  {Boolean(product.quantityTiers && product.quantityTiers.length > 0) ? (
+                    <small className="quantity-slab-hint">Supplier quantity slab applies</small>
+                  ) : null}
+                  {Boolean(product.priceReviewRequired) ? (
+                    <small className="price-review-flag"><AlertTriangle size={12} /> দামের review প্রয়োজন</small>
+                  ) : null}
+                  <div className="quantity-control">
+                    <button type="button" aria-label="কমিয়ে দিন" disabled={nextAllowedQuantity(product, quantity, -1) === quantity} onClick={() => setQuantity(product.serviceKey, nextAllowedQuantity(product, quantity, -1), product.maxAllowedQuantity)}><Minus size={12} /></button>
+                    <span>{quantity}</span>
+                    <button type="button" aria-label="বাড়িয়ে দিন" disabled={nextAllowedQuantity(product, quantity, 1) === quantity} onClick={() => setQuantity(product.serviceKey, nextAllowedQuantity(product, quantity, 1), product.maxAllowedQuantity)}><Plus size={12} /></button>
+                    <button type="button" className="remove-item" aria-label="সরান" onClick={() => remove(product.serviceKey)}><Trash2 size={12} /></button>
+                  </div>
+                </div>
+                <strong>{formatMoney(product.retailPrice * quantity, store?.currency ?? "BDT")}</strong>
+              </div>
+            ))}
             {unavailableLines.map(line => <div className="unavailable-cart-line" key={line.serviceKey}><AlertTriangle size={14} /><span>{line.serviceKey} · supplier catalog-এ available নেই</span><button type="button" className="text-link" onClick={() => remove(line.serviceKey)}>Remove</button></div>)}
             <div className="summary-line"><span>Subtotal</span><span>{formatMoney(total, store?.currency ?? "BDT")}</span></div><div className="summary-total"><span>মোট</span><strong>{formatMoney(total, store?.currency ?? "BDT")}</strong></div>
             {formError && <div className="form-error">{formError}{stockRefreshRequired && <button type="button" className="button button-light refresh-cart" onClick={() => void refreshCartFromSupplier()} disabled={refreshingStock || catalogQuery.isFetching}>{refreshingStock || catalogQuery.isFetching ? <LoaderCircle className="spin" size={14} /> : <RefreshCw size={14} />} Supplier stock refresh করে basket update</button>}</div>}
