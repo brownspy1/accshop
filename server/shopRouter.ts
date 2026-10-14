@@ -492,6 +492,24 @@ export const shopRouter = router({
       sync: adminProcedure.input(z.object({ provider: z.enum(["acczone", "couponshops"]) })).mutation(async ({ input }) => {
         return syncProviderCatalog(input.provider);
       }),
+      syncAll: adminProcedure.mutation(async () => {
+        const providers: ShopProvider[] = ["acczone", "couponshops"];
+        const results = await Promise.allSettled(
+          providers.map(async (p) => {
+            const hasKey = await hasProviderApiKey(p);
+            if (!hasKey) return { provider: p, configured: false, synced: 0, active: 0 };
+            const res = await syncProviderCatalog(p);
+            return { provider: p, configured: true, synced: res.synced, active: res.active };
+          })
+        );
+        const report = results.map((r, idx) => {
+          const provider = providers[idx];
+          if (r.status === "fulfilled") return r.value;
+          return { provider, configured: true, synced: 0, active: 0, error: r.reason instanceof Error ? r.reason.message : "Sync failed" };
+        });
+        const totalSynced = report.reduce((sum, item) => sum + item.synced, 0);
+        return { success: true, totalSynced, report };
+      }),
       update: adminProcedure.input(z.object({
         serviceKey: z.string().regex(/^[A-Za-z0-9_-]{1,128}$/),
         retailPrice: z.number().min(0).max(10_000_000),

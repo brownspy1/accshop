@@ -126,13 +126,205 @@ function ServicesSection() {
   const utils = trpc.useUtils();
   const { data = [], isLoading } = trpc.shop.admin.services.list.useQuery();
   const [search, setSearch] = useState("");
-  const sync = trpc.shop.admin.services.sync.useMutation({ onSuccess: result => { toast.success(`${result.synced}টি ${result.provider} service sync হয়েছে`); void utils.shop.admin.services.list.invalidate(); void utils.shop.admin.overview.invalidate(); void utils.shop.catalog.list.invalidate(); }, onError: err => toast.error(err.message) });
+  const [stockOnly, setStockOnly] = useState(false);
+  const [providerFilter, setProviderFilter] = useState<"all" | "acczone" | "couponshops">("all");
+  const [listedFilter, setListedFilter] = useState<"all" | "listed" | "unlisted">("all");
+
+  const sync = trpc.shop.admin.services.sync.useMutation({
+    onSuccess: result => {
+      toast.success(`${result.synced}টি ${result.provider} service sync হয়েছে`);
+      void utils.shop.admin.services.list.invalidate();
+      void utils.shop.admin.overview.invalidate();
+      void utils.shop.catalog.list.invalidate();
+    },
+    onError: err => toast.error(err.message),
+  });
+
+  const syncAll = trpc.shop.admin.services.syncAll.useMutation({
+    onSuccess: result => {
+      const summaryText = result.report
+        .map(r => `${r.provider === "acczone" ? "AccZone" : "CouponShops"}: ${r.synced}টি`)
+        .join(", ");
+      toast.success(`সব API রিফ্রেশ সম্পন্ন! (${summaryText})`);
+      void utils.shop.admin.services.list.invalidate();
+      void utils.shop.admin.overview.invalidate();
+      void utils.shop.catalog.list.invalidate();
+    },
+    onError: err => toast.error(err.message || "সব API সিঙ্ক ব্যর্থ হয়েছে"),
+  });
+
   const syncProvider = (provider: "acczone" | "couponshops") => sync.mutate({ provider });
-  const shown = data.filter(item => `${item.name} ${item.serviceKey}`.toLowerCase().includes(search.toLowerCase()));
-  return <><div className="admin-heading"><div><div className="eyebrow">PROVIDER CATALOG</div><h1>Services & prices</h1><p>দুটি API-র catalog আলাদাভাবে sync করুন; retail price ও storefront visibility আপনি নিয়ন্ত্রণ করবেন।</p></div><div className="sync-actions"><button className="button button-secondary" onClick={() => syncProvider("acczone")} disabled={sync.isPending}><RefreshCw className={sync.isPending ? "spin" : ""} size={15} /> AccZone sync</button><button className="button button-primary" onClick={() => syncProvider("couponshops")} disabled={sync.isPending}><RefreshCw className={sync.isPending ? "spin" : ""} size={15} /> CouponShops sync</button></div></div>
-    <div className="admin-toolbar"><div className="toolbar-search"><Search size={15} /><input value={search} onChange={e => setSearch(e.target.value)} placeholder="Service খুঁজুন..." /></div><span>{data.length} services · customer price admin-set</span></div>
-    <div className="admin-panel table-panel"><div className="table-head service-table-head"><span>Service</span><span>Supplier cost / slabs</span><span>Stock</span><span>Retail price</span><span>Storefront</span><span></span></div>{isLoading ? <PanelLoading /> : !shown.length ? <div className="empty-admin"><Boxes size={22} /><b>Catalog এখনো sync হয়নি</b><span>প্রথমে provider connection থেকে key দিন, তারপর সংশ্লিষ্ট catalog sync করুন।</span></div> : shown.map(item => <ServiceRow key={item.serviceKey} item={item} />)}</div>
-    <p className="table-footnote">Supplier cost কেবল admin-এ দেখা যায়। CouponShops catalog-এর unit slab INR-এ; supplier wallet charge USDT-এ। Storefront retail price আলাদাভাবে admin নির্ধারণ করেন।</p>
+
+  const inStockCount = data.filter(item => (item.stock - (item.reservedStock || 0)) > 0).length;
+
+  const shown = data.filter(item => {
+    const matchesSearch = `${item.name} ${item.serviceKey}`.toLowerCase().includes(search.toLowerCase());
+    const available = item.stock - (item.reservedStock || 0);
+    const matchesStock = stockOnly ? available > 0 : true;
+    const matchesProvider = providerFilter === "all" || item.provider === providerFilter;
+    const matchesListed = listedFilter === "all" || (listedFilter === "listed" ? item.isListed === 1 : item.isListed === 0);
+    return matchesSearch && matchesStock && matchesProvider && matchesListed;
+  });
+
+  const resetFilters = () => {
+    setSearch("");
+    setStockOnly(false);
+    setProviderFilter("all");
+    setListedFilter("all");
+  };
+
+  return <>
+    <div className="admin-heading">
+      <div>
+        <div className="eyebrow">PROVIDER CATALOG <span className="heading-line" /></div>
+        <h1>Services & prices</h1>
+        <p>আপনার সব সাপ্লায়ার API-র ক্যাটালগ সিঙ্ক করুন, স্টক ফিল্টার করুন এবং রিটেইল প্রাইস নির্ধারণ করুন।</p>
+      </div>
+      <div className="sync-actions">
+        <button
+          className="button button-primary sync-all-btn"
+          onClick={() => syncAll.mutate()}
+          disabled={syncAll.isPending || sync.isPending}
+          title="সবগুলো কানেক্টেড সাপ্লায়ার API থেকে সব প্রোডাক্ট রিফ্রেশ করুন"
+        >
+          <RefreshCw className={syncAll.isPending ? "spin" : ""} size={15} />
+          {syncAll.isPending ? "সব API সিঙ্ক হচ্ছে…" : "Sync All (সব API রিফ্রেশ)"}
+        </button>
+        <button
+          className="button button-light"
+          onClick={() => syncProvider("acczone")}
+          disabled={syncAll.isPending || sync.isPending}
+        >
+          <RefreshCw className={sync.isPending ? "spin" : ""} size={14} /> AccZone
+        </button>
+        <button
+          className="button button-light"
+          onClick={() => syncProvider("couponshops")}
+          disabled={syncAll.isPending || sync.isPending}
+        >
+          <RefreshCw className={sync.isPending ? "spin" : ""} size={14} /> CouponShops
+        </button>
+      </div>
+    </div>
+
+    <div className="admin-toolbar services-toolbar">
+      <div className="toolbar-search">
+        <Search size={15} />
+        <input
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="সার্ভিসের নাম বা কোড দিয়ে খুঁজুন..."
+        />
+      </div>
+
+      <div className="admin-filter-group">
+        {/* On/Off Stock Filter Toggle Button */}
+        <button
+          type="button"
+          className={`stock-filter-toggle ${stockOnly ? "active" : ""}`}
+          onClick={() => setStockOnly(!stockOnly)}
+          title={stockOnly ? "সব প্রোডাক্ট দেখতে ফিল্টার বন্ধ করুন" : "শুধু স্টকে থাকা প্রোডাক্ট দেখতে ফিল্টার চালু করুন"}
+          aria-pressed={stockOnly}
+        >
+          <PackageCheck size={15} />
+          <span>শুধু স্টকে থাকা সার্ভিস</span>
+          <span className="toggle-indicator">{stockOnly ? "ON" : "OFF"}</span>
+        </button>
+
+        {/* Provider Filter Chips */}
+        <div className="chip-selector" role="group" aria-label="Provider filter">
+          <button
+            type="button"
+            className={`admin-chip ${providerFilter === "all" ? "active" : ""}`}
+            onClick={() => setProviderFilter("all")}
+          >
+            সব API
+          </button>
+          <button
+            type="button"
+            className={`admin-chip ${providerFilter === "acczone" ? "active" : ""}`}
+            onClick={() => setProviderFilter("acczone")}
+          >
+            AccZone
+          </button>
+          <button
+            type="button"
+            className={`admin-chip ${providerFilter === "couponshops" ? "active" : ""}`}
+            onClick={() => setProviderFilter("couponshops")}
+          >
+            CouponShops
+          </button>
+        </div>
+
+        {/* Storefront Listed Filter Chips */}
+        <div className="chip-selector" role="group" aria-label="Listed filter">
+          <button
+            type="button"
+            className={`admin-chip ${listedFilter === "all" ? "active" : ""}`}
+            onClick={() => setListedFilter("all")}
+          >
+            সব
+          </button>
+          <button
+            type="button"
+            className={`admin-chip ${listedFilter === "listed" ? "active" : ""}`}
+            onClick={() => setListedFilter("listed")}
+          >
+            Listed
+          </button>
+          <button
+            type="button"
+            className={`admin-chip ${listedFilter === "unlisted" ? "active" : ""}`}
+            onClick={() => setListedFilter("unlisted")}
+          >
+            Unlisted
+          </button>
+        </div>
+      </div>
+
+      <div className="toolbar-stats">
+        <b>{shown.length}</b>টি সার্ভিস দেখানো হচ্ছে <small>(স্টকে আছে: {inStockCount}টি / মোট: {data.length}টি)</small>
+      </div>
+    </div>
+
+    <div className="admin-panel table-panel">
+      <div className="table-head service-table-head">
+        <span>Service</span>
+        <span>Supplier cost / slabs</span>
+        <span>Stock</span>
+        <span>Retail price</span>
+        <span>Storefront</span>
+        <span></span>
+      </div>
+      {isLoading ? (
+        <PanelLoading />
+      ) : !data.length ? (
+        <div className="empty-admin">
+          <Boxes size={22} />
+          <b>Catalog এখনো sync হয়নি</b>
+          <span>প্রথমে API connection থেকে key দিন, তারপর "Sync All (সব API রিফ্রেশ)" বাটনে ক্লিক করুন।</span>
+        </div>
+      ) : !shown.length ? (
+        <div className="empty-admin">
+          <PackageCheck size={22} />
+          <b>কোনো সার্ভিস পাওয়া যায়নি</b>
+          <span>{stockOnly ? "স্টকে থাকা কোনো সার্ভিস পাওয়া যায়নি বা সার্চের সাথে মেলেনি।" : "অন্য ফিল্টার বা সার্চ টার্ম ব্যবহার করুন।"}</span>
+          <button
+            type="button"
+            className="button button-light"
+            style={{ marginTop: "10px" }}
+            onClick={resetFilters}
+          >
+            ফিল্টার রিসেট করুন
+          </button>
+        </div>
+      ) : (
+        shown.map(item => <ServiceRow key={item.serviceKey} item={item} />)
+      )}
+    </div>
+    <p className="table-footnote">
+      Supplier cost কেবল admin-এ দেখা যায়। CouponShops catalog-এর unit slab INR-এ; supplier wallet charge USDT-এ। Storefront retail price আলাদাভাবে admin নির্ধারণ করেন।
+    </p>
   </>;
 }
 async function compressProductImage(file: File): Promise<Blob> {
