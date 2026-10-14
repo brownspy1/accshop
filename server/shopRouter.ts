@@ -49,6 +49,33 @@ function safelyParseCodes(value: string | null) {
   }
 }
 
+export function extractCodeStrings(raw: string | null): string[] {
+  if (!raw) return [];
+  try {
+    const result: unknown = JSON.parse(raw);
+    if (!Array.isArray(result)) {
+      if (typeof result === "string" && result.trim()) return [result.trim()];
+      return [];
+    }
+    return result
+      .map(entry => {
+        if (typeof entry === "string") return entry.trim();
+        if (entry && typeof entry === "object") {
+          const obj = entry as Record<string, unknown>;
+          if (typeof obj.codeValue === "string") return obj.codeValue.trim();
+          if (typeof obj.code === "string") return obj.code.trim();
+          if (typeof obj.value === "string") return obj.value.trim();
+          if (typeof obj.secret === "string") return obj.secret.trim();
+          return JSON.stringify(obj);
+        }
+        return String(entry ?? "").trim();
+      })
+      .filter(Boolean);
+  } catch {
+    return raw.trim() ? [raw.trim()] : [];
+  }
+}
+
 function queueCredentialEmail(orderId: number) {
   void sendOrderCredentialEmail(orderId).catch(() => undefined);
 }
@@ -332,17 +359,41 @@ export const shopRouter = router({
       }
     }),
     track: publicProcedure.input(z.object({
-      orderNo: z.string().trim().min(8).max(32),
-      email: z.string().trim().email().max(320),
-      phone: z.string().trim().min(7).max(64),
+      orderNo: z.string().trim().min(6).max(32),
+      email: z.string().trim().max(320).optional(),
+      phone: z.string().trim().max(64).optional(),
+      contact: z.string().trim().max(320).optional(),
     })).mutation(async ({ input, ctx }) => {
-      assertRateLimit("lookup", ctx.req.ip || "unknown", 8);
+      assertRateLimit("lookup", ctx.req.ip || "unknown", 12);
       const db = await getDb();
       if (!db) throw new Error("Database is not available");
-      const [order] = await db.select().from(orders).where(eq(orders.orderNo, input.orderNo.toUpperCase())).limit(1);
-      if (!order || order.customerEmail !== input.email.toLowerCase() || order.customerPhone !== input.phone.trim()) {
-        throw new Error("Order পাওয়া যায়নি। Order code, email ও phone মিলিয়ে চেষ্টা করুন।");
+
+      const orderNo = input.orderNo.trim().toUpperCase();
+      const [order] = await db.select().from(orders).where(eq(orders.orderNo, orderNo)).limit(1);
+
+      const providedEmail = (input.email || (input.contact && input.contact.includes("@") ? input.contact : "")).trim().toLowerCase();
+      const providedPhone = (input.phone || (input.contact && !input.contact.includes("@") ? input.contact : "")).trim();
+      const rawContact = input.contact?.trim().toLowerCase() || "";
+
+      if (!providedEmail && !providedPhone && !rawContact) {
+        throw new Error("Order tracking-এর জন্য Email অথবা Phone নম্বরের যেকোনো একটি দিন।");
       }
+
+      if (!order) {
+        throw new Error("Order পাওয়া যায়নি। সঠিক Order code দিন।");
+      }
+
+      const dbEmail = (order.customerEmail || "").trim().toLowerCase();
+      const dbPhone = (order.customerPhone || "").trim();
+
+      const emailMatches = Boolean(providedEmail && dbEmail && dbEmail === providedEmail);
+      const phoneMatches = Boolean(providedPhone && dbPhone && (dbPhone === providedPhone || dbPhone.endsWith(providedPhone) || providedPhone.endsWith(dbPhone)));
+      const contactMatches = Boolean(rawContact && (dbEmail === rawContact || dbPhone === rawContact || dbPhone.endsWith(rawContact) || rawContact.endsWith(dbPhone)));
+
+      if (!emailMatches && !phoneMatches && !contactMatches) {
+        throw new Error("প্রদত্ত Email বা Phone নম্বরের সাথে Order-এর তথ্যের মিল পাওয়া যায়নি।");
+      }
+
       const lines = await db.select().from(orderItems).where(eq(orderItems.orderId, order.id));
       return {
         orderNo: order.orderNo,
@@ -352,7 +403,7 @@ export const shopRouter = router({
         createdAt: order.createdAt,
         items: lines.map(line => {
           const codes = (order.status === "fulfilled" || line.fulfillmentState === "fulfilled")
-            ? safelyParseCodes(line.resultCodes)
+            ? extractCodeStrings(line.resultCodes)
             : [];
           return {
             serviceName: line.serviceName,

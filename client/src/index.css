@@ -45,5 +45,9 @@
 .code-copy-btn{display:inline-flex;align-items:center;gap:5px;padding:5px 10px;background:#0d3932;color:#d5ffef;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;transition:.15s}
 .code-copy-btn:hover{background:#095b4a}
 .code-copy-btn.copied{background:#11794e;color:#fff}
+.track-code-content{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.track-code-badge{font-size:10px;font-weight:750;text-transform:uppercase;letter-spacing:.05em;padding:2px 7px;border-radius:4px;background:#d8f3e5;color:#0b7049}
+.track-optional-tag{font-size:11px;font-weight:500;color:#6b7b74;margin-left:4px}
+.track-helper-badge{display:inline-block;font-size:11px;font-weight:600;color:#0b7049;background:#eef8f2;padding:4px 8px;border-radius:6px;margin-bottom:8px}
 
 
