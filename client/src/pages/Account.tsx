@@ -223,12 +223,12 @@ export default function Account() {
 
             <form onSubmit={submit}>
               <label className="field">
-                Checkout Email
+                Checkout Email অথবা Phone নম্বর
                 <input
-                  type="email"
+                  type="text"
                   required
                   maxLength={320}
-                  autoComplete="email"
+                  autoComplete="username"
                   value={email}
                   onChange={event => {
                     setEmail(event.target.value);
@@ -236,7 +236,7 @@ export default function Account() {
                     setSuccessMessage("");
                     setDirectUrl(null);
                   }}
-                  placeholder="you@example.com"
+                  placeholder="you@example.com অথবা 01XXXXXXXXX"
                 />
               </label>
 

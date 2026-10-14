@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { customAlphabet } from "nanoid";
 import { TRPCError } from "@trpc/server";
-import { and, desc, eq, gt, inArray, notInArray, sql } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, notInArray, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { activationServices, customerAccounts, orderItems, orders, providerCredentials, storeSettings } from "../drizzle/schema";
 import { AcczoneError, buyActivation, getBalance, getHistory, getServices, hasApiKey, testAndSaveApiKey } from "./acczone";
@@ -14,6 +14,8 @@ import { markupRatioForManualRetailPrice, supplierCostInStoreCurrency } from "./
 import { hashMagicToken, newMagicToken } from "./customerAuth";
 import { customerRecentDeliveryMail, inspectEmailConfigForAdmin, sendCustomerMagicLink, sendOrderCredentialEmail } from "./emailDelivery";
 import { listResendDomains, verifiedSenderDomain } from "./resend";
+import { setDynamicAdminEmail } from "./_core/adminAllowlist";
+import { hashAdminPassword, verifyAdminPassword, verifyFallbackAdminSecret } from "./adminAuth";
 import { adminProcedure, publicProcedure, router } from "./_core/trpc";
 
 const newOrderNo = customAlphabet("23456789ABCDEFGHJKLMNPQRSTUVWXYZ", 13);
@@ -21,14 +23,41 @@ const defaultSettings = {
   id: 1, currency: "BDT", paymentInstructions: "", bkashNumber: "", nagadNumber: "", bankDetails: "", supportContact: "",
   inrToStoreRate: 0, usdtToStoreRate: 0, acczoneUnitToStoreRate: 0,
   resendFromEmail: "", publicSiteUrl: "",
+  adminUsername: "admin",
+  adminEmail: "",
+  adminPasswordHash: null as string | null,
+  adminPasswordSalt: null as string | null,
 };
 const rateBuckets = new Map<string, { count: number; since: number }>();
+
+let storeSettingsColumnsMigrated = false;
+async function ensureStoreSettingsColumns(db: any) {
+  if (storeSettingsColumnsMigrated) return;
+  try {
+    await db.execute(sql`
+      ALTER TABLE store_settings 
+      ADD COLUMN IF NOT EXISTS "adminUsername" varchar(128) DEFAULT 'admin',
+      ADD COLUMN IF NOT EXISTS "adminEmail" varchar(320),
+      ADD COLUMN IF NOT EXISTS "adminPasswordHash" varchar(256),
+      ADD COLUMN IF NOT EXISTS "adminPasswordSalt" varchar(64);
+    `);
+    storeSettingsColumnsMigrated = true;
+  } catch (err) {
+    // If table doesn't exist yet or already has columns, log and continue
+    console.warn("[DB Migration] store_settings columns ensure:", err);
+  }
+}
 
 async function settings() {
   const db = await getDb();
   if (!db) throw new Error("Database is not available");
+  await ensureStoreSettingsColumns(db);
   const [saved] = await db.select().from(storeSettings).where(eq(storeSettings.id, 1)).limit(1);
-  return { ...defaultSettings, ...saved };
+  const combined = { ...defaultSettings, ...saved };
+  if (combined.adminEmail) {
+    setDynamicAdminEmail(combined.adminEmail);
+  }
+  return combined;
 }
 
 function publicPaymentMethods(s: Awaited<ReturnType<typeof settings>>) {
@@ -368,8 +397,15 @@ export const shopRouter = router({
       const db = await getDb();
       if (!db) throw new Error("Database is not available");
 
-      const orderNo = input.orderNo.trim().toUpperCase();
-      const [order] = await db.select().from(orders).where(eq(orders.orderNo, orderNo)).limit(1);
+      const rawInputOrder = input.orderNo.trim().toUpperCase();
+      const normalizedQueryNo = rawInputOrder.replace(/^#/, "");
+      const orderNoWithPrefix = normalizedQueryNo.startsWith("AZ-") ? normalizedQueryNo : `AZ-${normalizedQueryNo}`;
+
+      const [order] = await db.select().from(orders).where(or(
+        eq(orders.orderNo, rawInputOrder),
+        eq(orders.orderNo, normalizedQueryNo),
+        eq(orders.orderNo, orderNoWithPrefix),
+      )).limit(1);
 
       const providedEmail = (input.email || (input.contact && input.contact.includes("@") ? input.contact : "")).trim().toLowerCase();
       const providedPhone = (input.phone || (input.contact && !input.contact.includes("@") ? input.contact : "")).trim();
@@ -386,9 +422,22 @@ export const shopRouter = router({
       const dbEmail = (order.customerEmail || "").trim().toLowerCase();
       const dbPhone = (order.customerPhone || "").trim();
 
+      const normDbPhone = dbPhone.replace(/\D/g, "").slice(-10);
+      const normProvidedPhone = providedPhone.replace(/\D/g, "").slice(-10);
+      const normRawContact = rawContact.replace(/\D/g, "").slice(-10);
+
       const emailMatches = Boolean(providedEmail && dbEmail && dbEmail === providedEmail);
-      const phoneMatches = Boolean(providedPhone && dbPhone && (dbPhone === providedPhone || dbPhone.endsWith(providedPhone) || providedPhone.endsWith(dbPhone)));
-      const contactMatches = Boolean(rawContact && (dbEmail === rawContact || dbPhone === rawContact || dbPhone.endsWith(rawContact) || rawContact.endsWith(dbPhone)));
+      const phoneMatches = Boolean(
+        (normProvidedPhone && normDbPhone && normDbPhone === normProvidedPhone) ||
+        (dbPhone && providedPhone && (dbPhone === providedPhone || dbPhone.endsWith(providedPhone) || providedPhone.endsWith(dbPhone)))
+      );
+      const contactMatches = Boolean(
+        rawContact && (
+          dbEmail === rawContact ||
+          (normRawContact && normDbPhone && normDbPhone === normRawContact) ||
+          (dbPhone && (dbPhone === rawContact || dbPhone.endsWith(rawContact) || rawContact.endsWith(dbPhone)))
+        )
+      );
 
       if (!emailMatches && !phoneMatches && !contactMatches) {
         throw new Error("প্রদত্ত Email বা Phone নম্বরের সাথে Order-এর তথ্যের মিল পাওয়া যায়নি।");
@@ -517,6 +566,65 @@ export const shopRouter = router({
           if (pricingChanged) await tx.update(activationServices).set({ priceReviewRequired: 1, updatedAt: new Date() }).where(gt(activationServices.retailPrice, 0));
         });
         return { success: true };
+      }),
+    }),
+    security: router({
+      get: adminProcedure.query(async () => {
+        const s = await settings();
+        return {
+          username: s.adminUsername || "admin",
+          email: s.adminEmail || process.env.ACCZONE_ADMIN_EMAIL || "admin@acczone.shop",
+          hasCustomPassword: Boolean(s.adminPasswordHash && s.adminPasswordSalt),
+        };
+      }),
+      update: adminProcedure.input(z.object({
+        currentPassword: z.string().min(1, "Current password is required"),
+        newUsername: z.string().trim().min(2).max(128).optional(),
+        newEmail: z.string().trim().email().max(320).optional(),
+        newPassword: z.string().min(6, "New password must be at least 6 characters").max(128).optional(),
+      })).mutation(async ({ input }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database is not available");
+        const s = await settings();
+
+        let currentValid = false;
+        if (s.adminPasswordHash && s.adminPasswordSalt) {
+          currentValid = verifyAdminPassword(input.currentPassword.trim(), s.adminPasswordHash, s.adminPasswordSalt);
+        } else {
+          currentValid = verifyFallbackAdminSecret(input.currentPassword.trim());
+        }
+
+        if (!currentValid) {
+          throw new TRPCError({
+            code: "UNAUTHORIZED",
+            message: "বর্তমান Admin পাসওয়ার্ড সঠিক নয়।",
+          });
+        }
+
+        const updatePayload: Record<string, unknown> = {
+          updatedAt: new Date(),
+        };
+
+        if (input.newUsername?.trim()) {
+          updatePayload.adminUsername = input.newUsername.trim();
+        }
+        if (input.newEmail?.trim()) {
+          const email = input.newEmail.trim().toLowerCase();
+          updatePayload.adminEmail = email;
+          setDynamicAdminEmail(email);
+        }
+        if (input.newPassword?.trim()) {
+          const { hash, salt } = hashAdminPassword(input.newPassword.trim());
+          updatePayload.adminPasswordHash = hash;
+          updatePayload.adminPasswordSalt = salt;
+        }
+
+        await db.update(storeSettings).set(updatePayload).where(eq(storeSettings.id, 1));
+
+        return {
+          success: true,
+          message: "অ্যাডমিন ইউজারনেম, ইমেইল ও পাসওয়ার্ড সফলভাবে আপডেট হয়েছে এবং এনক্রিপ্ট করে সংরক্ষণ করা হয়েছে।",
+        };
       }),
     }),
     email: router({

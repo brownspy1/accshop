@@ -20,6 +20,7 @@ const dateText = (value: Date | string | null | undefined) => value ? new Intl.D
 
 export default function Admin() {
   const [tab, setTab] = useState<AdminTab>("overview");
+  const [adminUsername, setAdminUsername] = useState("");
   const [adminPassword, setAdminPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const utils = trpc.useUtils();
@@ -42,8 +43,16 @@ export default function Admin() {
       <span className="gate-icon"><KeyRound size={22} /></span>
       <div className="eyebrow">ADMIN ACCESS</div>
       <h1>Secure sign in.</h1>
-      <p>এই control panel-এ প্রবেশ করতে Admin password / key দিন।</p>
-      <form onSubmit={(e) => { e.preventDefault(); if (adminPassword.trim()) loginWithSecret.mutate({ password: adminPassword.trim() }); }} className="admin-login-form">
+      <p>এই control panel-এ প্রবেশ করতে Admin credentials / key দিন।</p>
+      <form onSubmit={(e) => { e.preventDefault(); if (adminPassword.trim()) loginWithSecret.mutate({ username: adminUsername.trim() || undefined, password: adminPassword.trim() }); }} className="admin-login-form">
+        <input
+          type="text"
+          value={adminUsername}
+          onChange={(e) => setAdminUsername(e.target.value)}
+          placeholder="Admin username অথবা email (ঐচ্ছিক)"
+          className="admin-password-input"
+          style={{ marginBottom: "10px" }}
+        />
         <div className="password-input-wrap">
           <input
             type={showPassword ? "text" : "password"}
@@ -357,5 +366,168 @@ function SettingsSection() {
       <section className="admin-panel settings-panel"><div className="panel-top"><div><h2>Customer account & transactional email</h2><p>একটি completed order-এর সব activation detail এক email-এ যাবে; customer verified link দিয়ে history দেখতে ও resend করতে পারবেন।</p></div><Mail size={19} /></div><div className="settings-grid"><label className="field full-field">Public storefront URL<input type="url" required value={form.publicSiteUrl} onChange={event => setForm({ ...form, publicSiteUrl: event.target.value })} placeholder="https://your-shop.example" /><small>Magic-link-এর destination; published HTTPS origin দিন।</small></label><label className="field full-field">Verified Resend sender email<input type="email" maxLength={320} value={form.resendFromEmail} onChange={event => setForm({ ...form, resendFromEmail: event.target.value })} placeholder="orders@your-verified-domain.com" /><small>Resend-এ verify করা sender domain থেকে হতে হবে।</small></label></div><div className="email-provider-state"><span className={`status-chip ${emailConfig.data?.configured ? "status-fulfilled" : "status-awaiting_payment"}`}><i />{emailConfig.isLoading ? "Checking…" : emailConfig.data?.configured ? "RESEND KEY CONFIGURED" : "RESEND KEY NOT SET"}</span><span className={`status-chip ${senderVerified ? "status-fulfilled" : "status-fulfillment_unknown"}`}><i />{senderVerified ? "SENDER VERIFIED" : "SENDER NEEDS VERIFICATION"}</span><p>{emailConfig.data?.domains.length ? `Verified domains: ${emailConfig.data.domains.filter(domain => domain.status === "verified" && domain.sendingEnabled).map(domain => domain.name).join(", ") || "none"}` : "Resend account-এ domain verify ও sending enable করুন."}</p><a className="text-link" href="https://resend.com/domains" target="_blank" rel="noreferrer">Resend domain settings <ExternalLink size={12} /></a></div><label className="field email-key-field">Resend API key <span className="optional">key শুধু secure server request-এ যাবে, পরে দেখানো হবে না</span><input type="password" autoComplete="new-password" value={resendKey} onChange={event => setResendKey(event.target.value)} minLength={8} maxLength={2048} placeholder={emailConfig.data?.configured ? "Replace করতে নতুন Resend key লিখুন" : "re_…"} /></label><button type="button" className="button button-secondary" onClick={() => configureEmail.mutate({ apiKey: resendKey })} disabled={!resendKey.trim() || configureEmail.isPending}>{configureEmail.isPending ? <LoaderCircle className="spin" size={14} /> : <ShieldCheck size={14} />}{emailConfig.data?.configured ? "Verify & replace Resend key" : "Verify & save Resend key"}</button><p className="form-help">Setup order: sender/domain verify করুন, sender email ও storefront URL save করুন, তারপর key submit করুন। Email পাঠাতে শুধু server-side encrypted credential ব্যবহার হবে।</p></section>
       <div className="settings-save-row"><span>{data?.updatedAt ? `Last updated ${dateText(data.updatedAt)}` : "Manual payment setup unfinished"}</span><button className="button button-primary" type="submit" disabled={save.isPending}>{save.isPending ? <LoaderCircle className="spin" size={14} /> : <Save size={14} />} Save settings</button></div>
     </form>}
+    <AdminSecuritySection />
   </>;
+}
+
+function AdminSecuritySection() {
+  const utils = trpc.useUtils();
+  const { data: sec, isLoading } = trpc.shop.admin.security.get.useQuery();
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newUsername, setNewUsername] = useState("");
+  const [newEmail, setNewEmail] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showCurrentPw, setShowCurrentPw] = useState(false);
+  const [showNewPw, setShowNewPw] = useState(false);
+
+  useEffect(() => {
+    if (sec) {
+      setNewUsername(sec.username || "admin");
+      setNewEmail(sec.email || "");
+    }
+  }, [sec]);
+
+  const updateSecurity = trpc.shop.admin.security.update.useMutation({
+    onSuccess: (res) => {
+      toast.success(res.message);
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+      void utils.shop.admin.security.get.invalidate();
+      void utils.auth.me.invalidate();
+    },
+    onError: (err) => {
+      toast.error(err.message || "পাসওয়ার্ড আপডেট ব্যর্থ হয়েছে");
+    },
+  });
+
+  const handleSubmit = (e: FormEvent) => {
+    e.preventDefault();
+    if (!currentPassword) {
+      toast.error("বর্তমান পাসওয়ার্ড দেওয়া আবশ্যক।");
+      return;
+    }
+    if (newPassword && newPassword !== confirmPassword) {
+      toast.error("নতুন পাসওয়ার্ড ও কনফার্ম পাসওয়ার্ড মিলছে না।");
+      return;
+    }
+    if (newPassword && newPassword.length < 6) {
+      toast.error("নতুন পাসওয়ার্ড কমপক্ষে ৬ অক্ষরের হতে হবে।");
+      return;
+    }
+
+    updateSecurity.mutate({
+      currentPassword,
+      newUsername: newUsername.trim() || undefined,
+      newEmail: newEmail.trim() || undefined,
+      newPassword: newPassword.trim() || undefined,
+    });
+  };
+
+  return (
+    <section className="admin-panel settings-panel" style={{ marginTop: "24px" }}>
+      <div className="panel-top">
+        <div>
+          <h2>Admin Account & Security (অ্যাডমিন নিরাপত্তা ও ক্রেডেনশিয়ালস)</h2>
+          <p>আপনার অ্যাডমিন Username, Email এবং Password পরিবর্তন করুন। সকল ডেটা Scrypt ক্রিপ্টোগ্রাফিক সল্ট সহ এনক্রিপ্ট হয়ে ডাটাবেজে সংরক্ষিত থাকে।</p>
+        </div>
+        <ShieldCheck size={20} />
+      </div>
+
+      <div className="security-status-bar" style={{ display: "flex", gap: "1rem", flexWrap: "wrap", padding: "0.75rem 1rem", background: "var(--surface, #f8fbf9)", borderRadius: "8px", border: "1px solid var(--line, #e2eae5)", marginBottom: "1rem" }}>
+        <div><small style={{ color: "#6b7c75" }}>বর্তমান ইউজারনেম:</small> <b>{sec?.username || "admin"}</b></div>
+        <div><small style={{ color: "#6b7c75" }}>অ্যাডমিন ইমেইল:</small> <b>{sec?.email || "admin@acczone.shop"}</b></div>
+        <div><small style={{ color: "#6b7c75" }}>পাসওয়ার্ড সিকিউরিটি:</small> <span style={{ color: sec?.hasCustomPassword ? "#10b981" : "#f59e0b", fontWeight: 700 }}>{sec?.hasCustomPassword ? "✓ Scrypt Encrypted (Custom)" : "Default / Env Secret"}</span></div>
+      </div>
+
+      <form onSubmit={handleSubmit}>
+        <div className="settings-grid">
+          <label className="field">
+            Admin Username
+            <input
+              type="text"
+              required
+              minLength={2}
+              maxLength={128}
+              value={newUsername}
+              onChange={e => setNewUsername(e.target.value)}
+              placeholder="admin"
+            />
+          </label>
+
+          <label className="field">
+            Admin Email
+            <input
+              type="email"
+              required
+              maxLength={320}
+              value={newEmail}
+              onChange={e => setNewEmail(e.target.value)}
+              placeholder="admin@yourdomain.com"
+            />
+          </label>
+
+          <label className="field">
+            নতুন Password <span className="optional">(পরিবর্তন না করতে চাইলে ফাঁকা রাখুন)</span>
+            <span className="secret-input-wrap">
+              <input
+                type={showNewPw ? "text" : "password"}
+                minLength={6}
+                maxLength={128}
+                value={newPassword}
+                onChange={e => setNewPassword(e.target.value)}
+                placeholder="কমপক্ষে ৬ অক্ষরের নতুন পাসওয়ার্ড"
+              />
+              <button type="button" className="reveal-key" onClick={() => setShowNewPw(!showNewPw)}>
+                {showNewPw ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </span>
+          </label>
+
+          <label className="field">
+            Confirm নতুন Password
+            <input
+              type={showNewPw ? "text" : "password"}
+              maxLength={128}
+              value={confirmPassword}
+              onChange={e => setConfirmPassword(e.target.value)}
+              placeholder="নতুন পাসওয়ার্ড পুনরায় লিখুন"
+            />
+          </label>
+
+          <label className="field full-field" style={{ borderTop: "1px solid var(--line, #e2eae5)", paddingTop: "1rem", marginTop: "0.5rem" }}>
+            <b>বর্তমান Password (নিশ্চিতকরণের জন্য আবশ্যক)</b>
+            <span className="secret-input-wrap">
+              <input
+                type={showCurrentPw ? "text" : "password"}
+                required
+                value={currentPassword}
+                onChange={e => setCurrentPassword(e.target.value)}
+                placeholder="পরিবর্তন সেভ করতে বর্তমান অ্যাডমিন পাসওয়ার্ড দিন"
+              />
+              <button type="button" className="reveal-key" onClick={() => setShowCurrentPw(!showCurrentPw)}>
+                {showCurrentPw ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </span>
+          </label>
+        </div>
+
+        <div className="notice" style={{ marginTop: "1rem" }}>
+          <ShieldCheck size={16} />
+          <span>পাসওয়ার্ড পরিবর্তনের সাথে সাথে নতুন পাসওয়ার্ড দিয়ে লগইন ভ্যালিডেট হবে। নতুন ইমেইল স্বয়ংক্রিয়ভাবে অ্যাডমিন অ্যাক্সেস প্রিভিলেজ পাবে।</span>
+        </div>
+
+        <button
+          className="button button-primary"
+          type="submit"
+          disabled={updateSecurity.isPending || !currentPassword.trim()}
+          style={{ marginTop: "1rem" }}
+        >
+          {updateSecurity.isPending ? <LoaderCircle className="spin" size={15} /> : <Save size={15} />}
+          {updateSecurity.isPending ? "সেভ হচ্ছে…" : "Update Admin Credentials"}
+        </button>
+      </form>
+    </section>
+  );
 }

@@ -1,9 +1,10 @@
 import StoreHeader from "@/components/StoreHeader";
+import ProductDetailsModal, { Product } from "@/components/ProductDetailsModal";
 import { useCart } from "@/contexts/CartContext";
 import { trpc } from "@/lib/trpc";
 import { formatMoney } from "@/lib/shop";
-import { AlertTriangle, ArrowDown, ArrowRight, ArrowUpRight, Check, Clock3, CreditCard, LockKeyhole, PackageCheck, Search, ShieldCheck, ShoppingBag, Sparkles, Zap } from "lucide-react";
-import { useMemo, useState } from "react";
+import { AlertTriangle, ArrowDown, ArrowRight, ArrowUpRight, Check, Clock3, CreditCard, Info, LockKeyhole, PackageCheck, Search, ShieldCheck, ShoppingBag, Sparkles, Zap } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "wouter";
 
 const categories = ["সব সার্ভিস", "AI & Productivity", "Entertainment", "Learning", "Other"];
@@ -25,6 +26,19 @@ export default function Home() {
   const { add, itemCount } = useCart();
   const [activeCategory, setActiveCategory] = useState("সব সার্ভিস");
   const [search, setSearch] = useState("");
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+
+  // Auto-open product modal if URL has ?product=... or #product-...
+  useEffect(() => {
+    if (!products.length) return;
+    const urlParams = new URLSearchParams(window.location.search);
+    const productKey = urlParams.get("product") || (window.location.hash.startsWith("#product-") ? window.location.hash.replace("#product-", "") : null);
+    if (productKey) {
+      const found = products.find(p => p.serviceKey === productKey);
+      if (found) setSelectedProduct(found);
+    }
+  }, [products]);
+
   const shown = useMemo(() => products.filter(item => {
     const category = categoryFor(item.serviceKey, item.name);
     return (activeCategory === "সব সার্ভিস" || category === activeCategory)
@@ -67,7 +81,7 @@ export default function Home() {
 
       <section className="catalog-section container-wide" id="services">
         <div className="section-heading">
-          <div><div className="eyebrow">DIGITAL ACTIVATION CATALOG <span className="heading-line" /></div><h2>আপনার জন্য যা খুঁজছেন</h2><p>দুটি verified supplier catalog থেকে সক্রিয় সার্ভিস ও stock দেখুন—retail price shop admin নির্ধারণ করেন।</p></div>
+          <div><div className="eyebrow">DIGITAL ACTIVATION CATALOG <span className="heading-line" /></div><h2>আপনার জন্য যা খুঁজছেন</h2><p>দুটি verified supplier catalog থেকে সক্রিয় সার্ভিস ও stock দেখুন—retail price shop admin নির্ধারণ করেন। বিস্তারিত দেখতে সার্ভিসে ক্লিক করুন।</p></div>
           <div className="catalog-search"><Search size={16} /><input aria-label="সার্ভিস খুঁজুন" placeholder="সার্ভিস খুঁজুন..." value={search} onChange={event => setSearch(event.target.value)} /><kbd>/</kbd></div>
         </div>
         <div className="category-tabs" role="tablist" aria-label="সার্ভিস category">
@@ -76,15 +90,15 @@ export default function Home() {
         {isLoading ? <div className="product-grid">{Array.from({ length: 6 }, (_, i) => <div key={i} className="product-skeleton" />)}</div>
           : error ? <div className="empty-panel"><span className="empty-icon"><PackageCheck /></span><h3>ক্যাটালগ লোড করা যায়নি</h3><p>কিছুক্ষণ পর আবার চেষ্টা করুন।</p></div>
           : shown.length === 0 ? <div className="empty-panel"><span className="empty-icon"><Sparkles /></span><h3>{products.length ? "এখানে matching service নেই" : "সার্ভিস catalog প্রস্তুত হচ্ছে"}</h3><p>{products.length ? "অন্য category বা search term দিয়ে দেখুন।" : "সার্ভিস catalog প্রস্তুত হলে এখানে দেখা যাবে।"}</p></div>
-          : <div className="product-grid">{shown.map((product, index) => <article className="product-card" key={product.serviceKey} style={{ animationDelay: `${index * 35}ms` }}>
+          : <div className="product-grid">{shown.map((product, index) => <article className="product-card" key={product.serviceKey} style={{ animationDelay: `${index * 35}ms` }} onClick={() => setSelectedProduct(product)} tabIndex={0} role="button" aria-label={`${product.name} বিস্তারিত দেখুন`} onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setSelectedProduct(product); } }}>
             <div className={`product-mark mark-${index % 5}`}>{product.imageUrl ? <img src={product.imageUrl} alt={`${product.name} product`} loading="lazy" /> : <><span>{shortLabel(product.serviceKey)}</span><i className="mark-spark">✳</i></>}</div>
             <div className="product-topline"><span className="category-label">{categoryFor(product.serviceKey, product.name)}</span><span className={`availability ${product.stock < 1 ? "out" : ""} ${!product.stockFresh ? "stale" : ""}`}><i /> {product.stock < 1 ? "স্টক নেই" : product.stockFresh ? "Supplier stock" : "Stock stale"}</span></div>
             <h3>{product.name}</h3>
             <p className="product-description">{product.description?.slice(0, 145) || "ডিজিটাল activation service — payment verification-এর পর delivery."}{(product.description?.length ?? 0) > 145 ? "…" : ""}</p>
             {product.priceReviewRequired && <p className="price-review-public"><AlertTriangle size={13} /> Supplier currency review চলছে; আপাতত order নেওয়া যাচ্ছে না।</p>}
             {!product.stockFresh && <p className="price-review-public stock-stale-public"><AlertTriangle size={13} /> সর্বশেষ supplier stock যাচাই করা যাচ্ছে না; refresh না হওয়া পর্যন্ত order বন্ধ।</p>}
-            <div className="product-meta"><span><PackageCheck size={14} /> {product.stock} available</span><span>{product.quantityTiers?.length ? `Order qty ${product.quantityTiers[0]?.minQuantity}–${product.quantityTiers.at(-1)?.maxQuantity}` : "One-time"}</span></div>
-            <div className="product-bottom"><div className="product-price"><small>আপনার মূল্য</small><strong>{formatMoney(product.retailPrice, store?.currency ?? "BDT")}</strong></div><button className="add-button" type="button" disabled={Boolean(product.priceReviewRequired) || !product.stockFresh || product.stock < 1} onClick={() => add(product.serviceKey, product.quantityTiers?.[0]?.minQuantity ?? 1, product.maxAllowedQuantity)} aria-label={`${product.name} কার্টে যোগ করুন`}><ShoppingBag size={16} /><span>{product.priceReviewRequired ? "Review চলছে" : !product.stockFresh ? "Stock check" : "কার্টে নিন"}</span><ArrowRight size={14} /></button></div>
+            <div className="product-meta"><span><PackageCheck size={14} /> {product.stock} available</span><button type="button" className="card-view-details-btn" onClick={e => { e.stopPropagation(); setSelectedProduct(product); }}><Info size={12} /> বিস্তারিত দেখুন</button></div>
+            <div className="product-bottom"><div className="product-price"><small>আপনার মূল্য</small><strong>{formatMoney(product.retailPrice, store?.currency ?? "BDT")}</strong></div><button className="add-button" type="button" disabled={Boolean(product.priceReviewRequired) || !product.stockFresh || product.stock < 1} onClick={e => { e.stopPropagation(); add(product.serviceKey, product.quantityTiers?.[0]?.minQuantity ?? 1, product.maxAllowedQuantity); }} aria-label={`${product.name} কার্টে যোগ করুন`}><ShoppingBag size={16} /><span>{product.priceReviewRequired ? "Review চলছে" : !product.stockFresh ? "Stock check" : "কার্টে নিন"}</span><ArrowRight size={14} /></button></div>
           </article>)}</div>}
         {shown.length > 0 && <div className="catalog-foot"><span>{shown.length}টি সার্ভিস দেখানো হচ্ছে</span><span>Supplier stock auto-refresh · store active থাকলে প্রায় প্রতি মিনিটে sync</span></div>}
       </section>
@@ -97,6 +111,14 @@ export default function Home() {
     </main>
     <footer className="store-footer"><div className="container-wide footer-inner"><BrandFoot /><span>Digital services · পরিষ্কার দাম · নিরাপদ অর্ডার</span><Link href="/track">অর্ডার খুঁজুন <ArrowUpRight size={14} /></Link></div></footer>
     {itemCount > 0 && <Link className="mobile-cart-fab" href="/checkout"><ShoppingBag size={17} /> {itemCount}টি পণ্য <ArrowRight size={15} /></Link>}
+
+    {/* Product Details & Variations Modal */}
+    <ProductDetailsModal
+      product={selectedProduct}
+      currency={store?.currency ?? "BDT"}
+      onClose={() => setSelectedProduct(null)}
+      category={selectedProduct ? categoryFor(selectedProduct.serviceKey, selectedProduct.name) : ""}
+    />
   </div>;
 }
 

@@ -51,64 +51,115 @@ function normalizeCodes(raw: string | null, _quantity?: number): string[] {
   }
 }
 
+function normalizePhone(p: string | null | undefined): string {
+  if (!p) return "";
+  const cleaned = p.replace(/\D/g, "");
+  if (cleaned.length >= 10) return cleaned.slice(-10);
+  return cleaned;
+}
+
+function normalizeOrderNo(o: string | null | undefined): string {
+  if (!o) return "";
+  return o.trim().toUpperCase().replace(/^#/, "").replace(/^AZ-/, "").replace(/[^A-Z0-9]/g, "");
+}
+
 export const customerAccountRouter = router({
   loginDirect: sameOriginProcedure.input(z.object({
-    email: z.string().trim().email().max(320),
+    email: z.string().trim().max(320).optional(),
+    identifier: z.string().trim().max(320).optional(),
     phoneOrOrder: z.string().trim().min(3).max(64),
   })).mutation(async ({ input, ctx }) => {
     const db = await getDb();
     if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database is not available." });
 
-    const email = input.email.trim().toLowerCase();
-    const secret = input.phoneOrOrder.trim();
+    const first = (input.email || input.identifier || "").trim();
+    const second = input.phoneOrOrder.trim();
+    if (!first || !second) {
+      throw new TRPCError({ code: "BAD_REQUEST", message: "Email/Phone এবং Order code দিন।" });
+    }
 
-    const rateKey = `login:${createHash("sha256").update(email).digest("hex")}`;
-    if (!checkRateLimit(rateKey, 20, 10 * 60_000)) {
-      throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: "অনেকবার ভুল তথ্য দেওয়া হয়েছে। ১০ মিনিট পরে আবার চেষ্টা করুন।" });
+    const rateKey = `login:${createHash("sha256").update(`${first}:${second}`).digest("hex")}`;
+    if (!checkRateLimit(rateKey, 25, 10 * 60_000)) {
+      throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: "অনেকবার চেষ্টা করা হয়েছে। কিছুক্ষণ পরে আবার চেষ্টা করুন।" });
+    }
+
+    let candidateEmail: string | null = first.includes("@") ? first.toLowerCase() : second.includes("@") ? second.toLowerCase() : null;
+    let matchedOrder: typeof orders.$inferSelect | undefined;
+
+    if (candidateEmail) {
+      const secret = candidateEmail === first.toLowerCase() ? second : first;
+      const customerOrders = await db.select().from(orders).where(eq(orders.customerEmail, candidateEmail));
+      const [account] = await db.select().from(customerAccounts).where(eq(customerAccounts.email, candidateEmail)).limit(1);
+
+      if (!customerOrders.length && !account) {
+        recordFailure(rateKey, 10 * 60_000);
+        throw new TRPCError({ code: "NOT_FOUND", message: "এই Email ঠিকানায় কোনো অর্ডার বা অ্যাকাউন্ট পাওয়া যায়নি।" });
+      }
+
+      const accountPhone = normalizePhone(account?.phone);
+      const secretPhone = normalizePhone(secret);
+      const secretOrder = normalizeOrderNo(secret);
+
+      if (accountPhone && secretPhone && accountPhone === secretPhone) {
+        matchedOrder = customerOrders[0];
+      }
+      if (!matchedOrder) {
+        for (const ord of customerOrders) {
+          const ordPhone = normalizePhone(ord.customerPhone);
+          const ordNo = normalizeOrderNo(ord.orderNo);
+          if ((ordPhone && secretPhone && ordPhone === secretPhone) ||
+              (ordNo && secretOrder && ordNo === secretOrder) ||
+              (ord.orderNo && (ord.orderNo === secret.toUpperCase() || ord.orderNo.endsWith(secret.toUpperCase())))) {
+            matchedOrder = ord;
+            break;
+          }
+        }
+      }
+    } else {
+      // Neither term has '@' -> One is Phone number and one is Order ID
+      const secretOrderA = normalizeOrderNo(first);
+      const secretPhoneB = normalizePhone(second);
+      const secretOrderB = normalizeOrderNo(second);
+      const secretPhoneA = normalizePhone(first);
+
+      const allRecentOrders = await db.select().from(orders).orderBy(desc(orders.createdAt)).limit(100);
+      for (const ord of allRecentOrders) {
+        const ordNo = normalizeOrderNo(ord.orderNo);
+        const ordPhone = normalizePhone(ord.customerPhone);
+        if ((ordNo === secretOrderA && ordPhone === secretPhoneB) ||
+            (ordNo === secretOrderB && ordPhone === secretPhoneA)) {
+          matchedOrder = ord;
+          candidateEmail = ord.customerEmail.toLowerCase();
+          break;
+        }
+      }
+    }
+
+    if (!matchedOrder && !candidateEmail) {
+      recordFailure(rateKey, 10 * 60_000);
+      throw new TRPCError({
+        code: "UNAUTHORIZED",
+        message: "প্রদত্ত Phone নম্বর বা Order code-এর সাথে কোনো অর্ডারের তথ্যের মিল পাওয়া যায়নি।",
+      });
+    }
+
+    const email = candidateEmail || matchedOrder?.customerEmail?.toLowerCase();
+    if (!email) {
+      recordFailure(rateKey, 10 * 60_000);
+      throw new TRPCError({ code: "UNAUTHORIZED", message: "অর্ডারের সাথে যুক্ত Email পাওয়া যায়নি।" });
     }
 
     let [account] = await db.select().from(customerAccounts).where(eq(customerAccounts.email, email)).limit(1);
     const customerOrders = await db.select().from(orders).where(eq(orders.customerEmail, email));
 
-    if (!customerOrders.length && !account) {
-      recordFailure(rateKey, 10 * 60_000);
-      throw new TRPCError({ code: "NOT_FOUND", message: "এই Email ঠিকানায় কোনো অর্ডার বা অ্যাকাউন্ট পাওয়া যায়নি।" });
-    }
-
-    let matched = false;
-    const accountPhone = (account?.phone || "").trim();
-    if (accountPhone && (accountPhone === secret || accountPhone.endsWith(secret) || secret.endsWith(accountPhone))) {
-      matched = true;
-    }
-    for (const ord of customerOrders) {
-      const ordPhone = (ord.customerPhone || "").trim();
-      const ordNo = (ord.orderNo || "").trim().toUpperCase();
-      if (ordPhone && (ordPhone === secret || ordPhone.endsWith(secret) || secret.endsWith(ordPhone))) {
-        matched = true;
-        break;
-      }
-      if (ordNo && (ordNo === secret.toUpperCase() || ordNo.endsWith(secret.toUpperCase()))) {
-        matched = true;
-        break;
-      }
-    }
-
-    if (!matched) {
-      recordFailure(rateKey, 10 * 60_000);
-      throw new TRPCError({
-        code: "UNAUTHORIZED",
-        message: "প্রদত্ত Phone নম্বর বা Order code-এর সাথে অ্যাকাউন্টের তথ্যের মিল নেই।",
-      });
-    }
-
-    // Success! Clear any past failure counts
+    // Clear failure count on success
     clearFailure(rateKey);
 
     if (!account) {
       const [newAcc] = await db.insert(customerAccounts).values({
         name: customerOrders[0]?.customerName || email.split("@")[0] || "Customer",
         email,
-        phone: customerOrders[0]?.customerPhone || secret,
+        phone: customerOrders[0]?.customerPhone || "",
         emailVerifiedAt: new Date(),
       }).returning();
       account = newAcc;
@@ -142,18 +193,21 @@ export const customerAccountRouter = router({
       const customerOrders = await db.select().from(orders).where(eq(orders.customerEmail, email));
 
       let matched = false;
-      const accountPhone = (account?.phone || "").trim();
-      if (accountPhone && (accountPhone === secret || accountPhone.endsWith(secret) || secret.endsWith(accountPhone))) {
+      const accountPhone = normalizePhone(account?.phone);
+      const secretPhone = normalizePhone(secret);
+      const secretOrder = normalizeOrderNo(secret);
+      if (accountPhone && secretPhone && accountPhone === secretPhone) {
         matched = true;
       }
       for (const ord of customerOrders) {
-        const ordPhone = (ord.customerPhone || "").trim();
-        const ordNo = (ord.orderNo || "").trim().toUpperCase();
-        if (ordPhone && (ordPhone === secret || ordPhone.endsWith(secret) || secret.endsWith(ordPhone))) {
+        const ordPhone = normalizePhone(ord.customerPhone);
+        const ordNo = normalizeOrderNo(ord.orderNo);
+        if (ordPhone && secretPhone && ordPhone === secretPhone) {
           matched = true;
           break;
         }
-        if (ordNo && (ordNo === secret.toUpperCase() || ordNo.endsWith(secret.toUpperCase()))) {
+        if ((ordNo && secretOrder && ordNo === secretOrder) ||
+            (ord.orderNo && (ord.orderNo === secret.toUpperCase() || ord.orderNo.endsWith(secret.toUpperCase())))) {
           matched = true;
           break;
         }

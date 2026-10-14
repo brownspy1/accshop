@@ -1,7 +1,14 @@
+let dynamicAdminEmail: string | null = null;
+
+export function setDynamicAdminEmail(email: string | null | undefined): void {
+  dynamicAdminEmail = email?.trim().toLowerCase() || null;
+}
+
 /** The plural environment value is a protected, comma-separated allowlist. */
 export function isAdminEmail(candidate: string | null | undefined): boolean {
   const email = candidate?.trim().toLowerCase();
   if (!email) return false;
+  if (dynamicAdminEmail && email === dynamicAdminEmail) return true;
   const configured = process.env.ACCZONE_ADMIN_EMAILS?.trim() || process.env.ACCZONE_ADMIN_EMAIL?.trim() || "";
   const allowlist = configured.split(/[\n,;]/).map(value => value.trim().toLowerCase()).filter(Boolean);
   if (allowlist.length > 0) return allowlist.includes(email);

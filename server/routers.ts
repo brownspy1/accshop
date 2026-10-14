@@ -1,10 +1,15 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import { TRPCError } from "@trpc/server";
+import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { COOKIE_NAME } from "@shared/const";
+import { storeSettings } from "../drizzle/schema";
 import { getSessionCookieOptions } from "./_core/cookies";
+import { setDynamicAdminEmail } from "./_core/adminAllowlist";
 import { sdk } from "./_core/sdk";
 import * as db from "./db";
+import { getDb } from "./db";
+import { verifyAdminPassword, verifyFallbackAdminSecret } from "./adminAuth";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, router } from "./_core/trpc";
 import { shopRouter } from "./shopRouter";
@@ -18,24 +23,61 @@ export const appRouter = router({
   auth: router({
     me: publicProcedure.query(opts => opts.ctx.user),
     loginWithSecret: publicProcedure.input(z.object({
+      username: z.string().trim().max(128).optional(),
       password: z.string().min(1, "Password is required"),
     })).mutation(async ({ input, ctx }) => {
-      const configuredPassword = process.env.ADMIN_PASSWORD?.trim() || process.env.ACCZONE_ADMIN_KEY?.trim() || process.env.ADMIN_KEY?.trim() || "admin123";
-      const candidateBuffer = Buffer.from(input.password.trim());
-      const expectedBuffer = Buffer.from(configuredPassword);
-      const isMatch = candidateBuffer.length === expectedBuffer.length && timingSafeEqual(candidateBuffer, expectedBuffer);
-      if (!isMatch) {
+      const database = await getDb();
+      let matched = false;
+      let activeAdminUsername = "Store Admin";
+      let activeAdminEmail = process.env.ACCZONE_ADMIN_EMAIL?.trim() || "admin@acczone.shop";
+
+      if (database) {
+        try {
+          const [s] = await database.select().from(storeSettings).where(eq(storeSettings.id, 1)).limit(1);
+          if (s) {
+            if (s.adminUsername) activeAdminUsername = s.adminUsername;
+            if (s.adminEmail) activeAdminEmail = s.adminEmail;
+
+            if (s.adminPasswordHash && s.adminPasswordSalt) {
+              const pwMatches = verifyAdminPassword(input.password.trim(), s.adminPasswordHash, s.adminPasswordSalt);
+              if (pwMatches) {
+                if (input.username?.trim()) {
+                  const candidateUser = input.username.trim().toLowerCase();
+                  if (
+                    candidateUser === (s.adminUsername || "admin").toLowerCase() ||
+                    candidateUser === (s.adminEmail || "").toLowerCase() ||
+                    candidateUser === "admin"
+                  ) {
+                    matched = true;
+                  }
+                } else {
+                  matched = true;
+                }
+              }
+            }
+          }
+        } catch (e) {
+          console.warn("[Auth] Error reading storeSettings for admin login:", e);
+        }
+      }
+
+      // If not matched by database password hash, fallback to environment secret
+      if (!matched) {
+        matched = verifyFallbackAdminSecret(input.password.trim());
+      }
+
+      if (!matched) {
         throw new TRPCError({ code: "UNAUTHORIZED", message: "Admin password বা secret key সঠিক নয়।" });
       }
 
-      const adminEmail = process.env.ACCZONE_ADMIN_EMAIL?.trim() || "admin@acczone.shop";
-      const adminOpenId = `admin_${createHash("sha256").update(adminEmail).digest("hex").slice(0, 16)}`;
+      setDynamicAdminEmail(activeAdminEmail);
+      const adminOpenId = `admin_${createHash("sha256").update(activeAdminEmail).digest("hex").slice(0, 16)}`;
 
       try {
         await db.upsertUser({
           openId: adminOpenId,
-          name: "Store Admin",
-          email: adminEmail,
+          name: activeAdminUsername,
+          email: activeAdminEmail,
           loginMethod: "key",
           role: "admin",
           lastSignedIn: new Date(),
@@ -46,7 +88,7 @@ export const appRouter = router({
 
       const adminSessionMs = 7 * 24 * 60 * 60 * 1000;
       const sessionToken = await sdk.createSessionToken(adminOpenId, {
-        name: "Store Admin",
+        name: activeAdminUsername,
         expiresInMs: adminSessionMs,
       });
 
@@ -55,7 +97,7 @@ export const appRouter = router({
 
       return {
         success: true,
-        user: { openId: adminOpenId, name: "Store Admin", email: adminEmail, role: "admin" },
+        user: { openId: adminOpenId, name: activeAdminUsername, email: activeAdminEmail, role: "admin" },
       } as const;
     }),
     logout: publicProcedure.mutation(({ ctx }) => {

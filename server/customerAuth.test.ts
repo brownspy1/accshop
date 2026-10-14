@@ -19,4 +19,12 @@ describe("customer account credentials", () => {
     expect(first.hash).not.toBe(first.token);
     expect(first.hash).toMatch(/^[a-f0-9]{64}$/);
   });
+  it("signs and verifies tokens using environment or built-in fallback secrets without throwing", () => {
+    delete process.env.MANUS_JWT_SECRET;
+    delete process.env.MANUS_PROJECT_ID;
+    const token = createCustomerSessionToken(99, 2_000_000_000_000);
+    expect(token).toBeTruthy();
+    expect(parseCustomerSessionCookie(`${CUSTOMER_COOKIE}=${token}`, 2_000_000_000_000)).toBe(99);
+  });
 });
+

@@ -66,6 +66,10 @@ export const storeSettings = pgTable("store_settings", {
   acczoneUnitToStoreRate: doublePrecision("acczoneUnitToStoreRate").notNull().default(0),
   resendFromEmail: varchar("resendFromEmail", { length: 320 }).notNull().default(""),
   publicSiteUrl: varchar("publicSiteUrl", { length: 512 }).notNull().default(""),
+  adminUsername: varchar("adminUsername", { length: 128 }).notNull().default("admin"),
+  adminEmail: varchar("adminEmail", { length: 320 }),
+  adminPasswordHash: varchar("adminPasswordHash", { length: 256 }),
+  adminPasswordSalt: varchar("adminPasswordSalt", { length: 64 }),
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });
 
