@@ -544,10 +544,29 @@ function SettingsSection() {
   const { data, isLoading } = trpc.shop.admin.settings.get.useQuery();
   const emailConfig = trpc.shop.admin.email.status.useQuery();
   const [resendKey, setResendKey] = useState("");
-  const [form, setForm] = useState({ currency: "BDT" as "BDT" | "USD" | "INR", paymentInstructions: "", bkashNumber: "", nagadNumber: "", bankDetails: "", supportContact: "", inrToStoreRate: 0, usdtToStoreRate: 0, acczoneUnitToStoreRate: 0, resendFromEmail: "", publicSiteUrl: "https://accshop-wedtccvr.manus.space" });
-  useEffect(() => { if (data) setForm({ currency: data.currency as "BDT" | "USD" | "INR", paymentInstructions: data.paymentInstructions ?? "", bkashNumber: data.bkashNumber ?? "", nagadNumber: data.nagadNumber ?? "", bankDetails: data.bankDetails ?? "", supportContact: data.supportContact ?? "", inrToStoreRate: Number(data.inrToStoreRate ?? 0), usdtToStoreRate: Number(data.usdtToStoreRate ?? 0), acczoneUnitToStoreRate: Number(data.acczoneUnitToStoreRate ?? 0), resendFromEmail: data.resendFromEmail ?? "", publicSiteUrl: data.publicSiteUrl || "https://accshop-wedtccvr.manus.space" }); }, [data]);
+  const [gmailUser, setGmailUser] = useState("");
+  const [gmailAppPass, setGmailAppPass] = useState("");
+  const [gmailFromName, setGmailFromName] = useState("AccZone Shop");
+  const [testEmailTarget, setTestEmailTarget] = useState("");
+  const [showGmailHelp, setShowGmailHelp] = useState(false);
+
+  const [form, setForm] = useState({ currency: "BDT" as "BDT" | "USD" | "INR", paymentInstructions: "", bkashNumber: "", nagadNumber: "", bankDetails: "", supportContact: "", inrToStoreRate: 0, usdtToStoreRate: 0, acczoneUnitToStoreRate: 0, resendFromEmail: "", publicSiteUrl: "https://accshop-767l.onrender.com" });
+  useEffect(() => { if (data) setForm({ currency: data.currency as "BDT" | "USD" | "INR", paymentInstructions: data.paymentInstructions ?? "", bkashNumber: data.bkashNumber ?? "", nagadNumber: data.nagadNumber ?? "", bankDetails: data.bankDetails ?? "", supportContact: data.supportContact ?? "", inrToStoreRate: Number(data.inrToStoreRate ?? 0), usdtToStoreRate: Number(data.usdtToStoreRate ?? 0), acczoneUnitToStoreRate: Number(data.acczoneUnitToStoreRate ?? 0), resendFromEmail: data.resendFromEmail ?? "", publicSiteUrl: data.publicSiteUrl || "https://accshop-767l.onrender.com" }); }, [data]);
   const save = trpc.shop.admin.settings.save.useMutation({ onSuccess: () => { toast.success("Store settings save হয়েছে"); void utils.shop.admin.settings.get.invalidate(); void utils.shop.catalog.storeInfo.invalidate(); void utils.shop.catalog.list.invalidate(); void utils.shop.admin.services.list.invalidate(); }, onError: e => toast.error(e.message) });
   const configureEmail = trpc.shop.admin.email.configureKey.useMutation({ onSuccess: result => { setResendKey(""); toast.success(result.senderVerified ? "Resend API key verified; sender verified" : `Resend key saved. Verified domains: ${result.verifiedDomains.join(", ") || "none"}`); void utils.shop.admin.email.status.invalidate(); }, onError: error => toast.error(error.message) });
+  const configureGmail = trpc.shop.admin.email.configureGmail.useMutation({
+    onSuccess: result => {
+      setGmailAppPass("");
+      toast.success(result.message);
+      void utils.shop.admin.email.status.invalidate();
+    },
+    onError: error => toast.error(error.message),
+  });
+  const sendTestEmail = trpc.shop.admin.email.sendTestEmail.useMutation({
+    onSuccess: result => toast.success(result.message),
+    onError: error => toast.error(error.message),
+  });
+
   const emailDomain = form.resendFromEmail.trim().split("@").pop()?.toLowerCase();
   const senderVerified = Boolean(emailDomain && emailConfig.data?.domains.some(domain => (domain.name.toLowerCase() === emailDomain || emailDomain.endsWith(`.${domain.name.toLowerCase()}`)) && domain.status === "verified" && domain.sendingEnabled));
   const submit = (event: FormEvent) => { event.preventDefault(); save.mutate(form); };
@@ -555,7 +574,118 @@ function SettingsSection() {
     {isLoading ? <PanelLoading /> : <form className="settings-form" onSubmit={submit}>
       <section className="admin-panel settings-panel"><div className="panel-top"><div><h2>Price & supplier conversion</h2><p>Store currency-এর সঙ্গে supplier cost মেলালে product-এর saved markup ratio অনুযায়ী retail price auto-adjust হবে।</p></div><CircleDollarSign size={19} /></div><label className="field short-field">Store currency<select value={form.currency} onChange={e => setForm({ ...form, currency: e.target.value as typeof form.currency })}><option value="BDT">BDT — Bangladeshi Taka</option><option value="USD">USD — US Dollar</option><option value="INR">INR — Indian Rupee</option></select></label><p className="form-help">১ source currency = store currency-তে কত। Zero মানে rate অজানা: auto-reprice বন্ধ, product price review প্রয়োজন। INR store-এ CouponShops-এর verified provider INR/USDT rate ব্যবহার হয়।</p><div className="settings-grid conversion-grid"><label className="field">১ INR = {form.currency}<input type="number" min="0" step="0.0001" value={form.inrToStoreRate} onChange={event => setForm({ ...form, inrToStoreRate: Number(event.target.value) })} /></label><label className="field">১ USDT = {form.currency}<input type="number" min="0" step="0.0001" value={form.usdtToStoreRate} onChange={event => setForm({ ...form, usdtToStoreRate: Number(event.target.value) })} /></label><label className="field">১ AccZone unit = {form.currency}<input type="number" min="0" step="0.0001" value={form.acczoneUnitToStoreRate} onChange={event => setForm({ ...form, acczoneUnitToStoreRate: Number(event.target.value) })} /></label></div><div className="notice"><AlertTriangle size={15} /><span>Supplier cost ≥ retail price এবং FX জানা থাকলে saved retail/cost ratio বজায় রেখে দাম বাড়বে; cost কমলে দাম auto কমবে না। Supplier/retail currency তুলনা করা না গেলে listing checkout-এর জন্য hold হবে—এখানে rate বসান বা product-এর retail price review করে save করুন।</span></div></section>
       <section className="admin-panel settings-panel"><div className="panel-top"><div><h2>Manual payment</h2><p>Customer checkout ও payment confirmation-এর জন্য account details।</p></div><Banknote size={19} /></div><div className="settings-grid"><label className="field">bKash account<input maxLength={64} value={form.bkashNumber} onChange={e => setForm({ ...form, bkashNumber: e.target.value })} placeholder="Merchant/personal number দিন" /></label><label className="field">Nagad account<input maxLength={64} value={form.nagadNumber} onChange={e => setForm({ ...form, nagadNumber: e.target.value })} placeholder="Account number দিন" /></label><label className="field full-field">Bank transfer details<textarea rows={3} maxLength={2000} value={form.bankDetails} onChange={e => setForm({ ...form, bankDetails: e.target.value })} placeholder="Bank, account name, account number, branch লিখুন" /></label><label className="field full-field">Customer payment instruction<textarea rows={3} maxLength={2000} value={form.paymentInstructions} onChange={e => setForm({ ...form, paymentInstructions: e.target.value })} placeholder="যেমন: Send Money/transfer করে order code-সহ transaction ID দিন." /></label><label className="field full-field">Customer support contact<input maxLength={160} value={form.supportContact} onChange={e => setForm({ ...form, supportContact: e.target.value })} placeholder="Email, phone বা support handle" /></label></div><div className="notice warning"><ShieldCheck size={15} /><span>কোনো ভুয়া payment number prefill করা নেই। Account field ফাঁকা থাকলে customer ঐ পদ্ধতিতে order দিতে পারবে না।</span></div></section>
-      <section className="admin-panel settings-panel"><div className="panel-top"><div><h2>Customer account & transactional email</h2><p>একটি completed order-এর সব activation detail এক email-এ যাবে; customer verified link দিয়ে history দেখতে ও resend করতে পারবেন।</p></div><Mail size={19} /></div><div className="settings-grid"><label className="field full-field">Public storefront URL<input type="url" required value={form.publicSiteUrl} onChange={event => setForm({ ...form, publicSiteUrl: event.target.value })} placeholder="https://your-shop.example" /><small>Magic-link-এর destination; published HTTPS origin দিন।</small></label><label className="field full-field">Verified Resend sender email<input type="email" maxLength={320} value={form.resendFromEmail} onChange={event => setForm({ ...form, resendFromEmail: event.target.value })} placeholder="orders@your-verified-domain.com" /><small>Resend-এ verify করা sender domain থেকে হতে হবে।</small></label></div><div className="email-provider-state"><span className={`status-chip ${emailConfig.data?.configured ? "status-fulfilled" : "status-awaiting_payment"}`}><i />{emailConfig.isLoading ? "Checking…" : emailConfig.data?.configured ? "RESEND KEY CONFIGURED" : "RESEND KEY NOT SET"}</span><span className={`status-chip ${senderVerified ? "status-fulfilled" : "status-fulfillment_unknown"}`}><i />{senderVerified ? "SENDER VERIFIED" : "SENDER NEEDS VERIFICATION"}</span><p>{emailConfig.data?.domains.length ? `Verified domains: ${emailConfig.data.domains.filter(domain => domain.status === "verified" && domain.sendingEnabled).map(domain => domain.name).join(", ") || "none"}` : "Resend account-এ domain verify ও sending enable করুন."}</p><a className="text-link" href="https://resend.com/domains" target="_blank" rel="noreferrer">Resend domain settings <ExternalLink size={12} /></a></div><label className="field email-key-field">Resend API key <span className="optional">key শুধু secure server request-এ যাবে, পরে দেখানো হবে না</span><input type="password" autoComplete="new-password" value={resendKey} onChange={event => setResendKey(event.target.value)} minLength={8} maxLength={2048} placeholder={emailConfig.data?.configured ? "Replace করতে নতুন Resend key লিখুন" : "re_…"} /></label><button type="button" className="button button-secondary" onClick={() => configureEmail.mutate({ apiKey: resendKey })} disabled={!resendKey.trim() || configureEmail.isPending}>{configureEmail.isPending ? <LoaderCircle className="spin" size={14} /> : <ShieldCheck size={14} />}{emailConfig.data?.configured ? "Verify & replace Resend key" : "Verify & save Resend key"}</button><p className="form-help">Setup order: sender/domain verify করুন, sender email ও storefront URL save করুন, তারপর key submit করুন। Email পাঠাতে শুধু server-side encrypted credential ব্যবহার হবে।</p></section>
+
+      {/* Gmail Direct Mailer Configuration */}
+      <section className="admin-panel settings-panel">
+        <div className="panel-top">
+          <div>
+            <h2>Gmail Direct Mailer (ডোমেইন ছাড়া সরাসরি জিমেইল থেকে ইমেইল পাঠান)</h2>
+            <p>আপনার ব্যক্তিগত বা বিজনেস Gmail অ্যাকাউন্ট দিয়ে সরাসরি কাস্টমারদের কাছে অ্যাকাউন্ট অ্যাক্টিভেশন লিঙ্ক ও ডেলিভারি কোড পাঠান। কোনো ডোমেইন DNS ভেরিফিকেশনের প্রয়োজন নেই!</p>
+          </div>
+          <Mail size={19} />
+        </div>
+
+        <div className="email-provider-state" style={{ marginBottom: "16px" }}>
+          <span className={`status-chip ${emailConfig.data?.gmail?.configured ? "status-fulfilled" : "status-awaiting_payment"}`}>
+            <i />{emailConfig.isLoading ? "Checking…" : emailConfig.data?.gmail?.configured ? "GMAIL ACTIVE & CONNECTED" : "GMAIL NOT CONFIGURED"}
+          </span>
+          {emailConfig.data?.gmail?.configured && emailConfig.data.gmail.user && (
+            <span style={{ fontSize: "13px", color: "#08785f", fontWeight: 600 }}>
+              সংযুক্ত Gmail: {emailConfig.data.gmail.user}
+            </span>
+          )}
+        </div>
+
+        <div className="settings-grid">
+          <label className="field">
+            আপনার Gmail ঠিকানা
+            <input
+              type="email"
+              value={gmailUser}
+              onChange={e => setGmailUser(e.target.value)}
+              placeholder="yourshop@gmail.com"
+            />
+          </label>
+          <label className="field">
+            Google App Password (১৬ অক্ষরের পাসওয়ার্ড)
+            <input
+              type="password"
+              value={gmailAppPass}
+              onChange={e => setGmailAppPass(e.target.value)}
+              placeholder="abcd efgh ijkl mnop"
+            />
+          </label>
+          <label className="field full-field">
+            প্রেরক প্রদর্শিত নাম (Store / Sender Display Name)
+            <input
+              type="text"
+              value={gmailFromName}
+              onChange={e => setGmailFromName(e.target.value)}
+              placeholder="AccZone Shop"
+            />
+          </label>
+        </div>
+
+        <div style={{ display: "flex", gap: "10px", marginTop: "14px", flexWrap: "wrap", alignItems: "center" }}>
+          <button
+            type="button"
+            className="button button-primary"
+            onClick={() => configureGmail.mutate({ gmailUser, appPassword: gmailAppPass, fromName: gmailFromName })}
+            disabled={!gmailUser.trim() || !gmailAppPass.trim() || configureGmail.isPending}
+          >
+            {configureGmail.isPending ? <LoaderCircle className="spin" size={14} /> : <ShieldCheck size={14} />}
+            Gmail টেস্ট ও সংরক্ষণ করুন
+          </button>
+          <button
+            type="button"
+            className="button button-light"
+            onClick={() => setShowGmailHelp(!showGmailHelp)}
+          >
+            💡 কীভাবে Google App Password পাবেন?
+          </button>
+        </div>
+
+        {showGmailHelp && (
+          <div className="notice" style={{ marginTop: "14px", background: "#f0f7f4", border: "1px solid #cce8dc", color: "#164e3f", padding: "16px", borderRadius: "10px", fontSize: "13px", lineHeight: "1.7" }}>
+            <strong>Google App Password পাওয়ার সহজ ৫টি ধাপ:</strong>
+            <ol style={{ margin: "8px 0 0 18px", padding: 0 }}>
+              <li>আপনার ব্রাউজারে <a href="https://myaccount.google.com/security" target="_blank" rel="noreferrer" style={{ color: "#08785f", textDecoration: "underline", fontWeight: 600 }}>myaccount.google.com/security</a>-তে যান।</li>
+              <li><strong>'2-Step Verification'</strong> অপশনটি চালু আছে কিনা নিশ্চিত করুন (না থাকলে চালু করুন)।</li>
+              <li>সার্চ বারে <strong>'App passwords'</strong> লিখে সার্চ করুন (অথবা 2-Step Verification-এর নিচে 'App passwords'-এ ক্লিক করুন)।</li>
+              <li>App name হিসেবে <code>AccShop</code> লিখে <strong>'Create'</strong> চাপুন।</li>
+              <li>একটি ১৬ অক্ষরের পাসওয়ার্ড (যেমন: <code>abcd efgh ijkl mnop</code>) পাবেন। সেটি কপি করে উপরের বক্সে পেস্ট করে <strong>"Gmail টেস্ট ও সংরক্ষণ করুন"</strong> বাটনে ক্লিক করুন।</li>
+            </ol>
+          </div>
+        )}
+
+        {emailConfig.data?.gmail?.configured && (
+          <div style={{ marginTop: "18px", paddingTop: "14px", borderTop: "1px solid var(--line, #e8eeeb)" }}>
+            <label className="field" style={{ maxWidth: "440px" }}>
+              টেস্ট ইমেইল পাঠান (Send Test Mail)
+              <div style={{ display: "flex", gap: "8px", marginTop: "4px" }}>
+                <input
+                  type="email"
+                  value={testEmailTarget}
+                  onChange={e => setTestEmailTarget(e.target.value)}
+                  placeholder="test@example.com"
+                />
+                <button
+                  type="button"
+                  className="button button-secondary"
+                  onClick={() => sendTestEmail.mutate({ targetEmail: testEmailTarget })}
+                  disabled={!testEmailTarget.trim() || sendTestEmail.isPending}
+                >
+                  {sendTestEmail.isPending ? <LoaderCircle className="spin" size={14} /> : <Mail size={14} />}
+                  পাঠান
+                </button>
+              </div>
+            </label>
+          </div>
+        )}
+      </section>
+
+      {/* Resend Optional Domain Email */}
+      <section className="admin-panel settings-panel"><div className="panel-top"><div><h2>Domain transactional email (Optional / Resend)</h2><p>কাস্টম ডোমেইনের নিজস্ব DNS/DKIM ভেরিফিকেশন থাকলে Resend API ব্যবহার করতে পারেন।</p></div><Mail size={19} /></div><div className="settings-grid"><label className="field full-field">Public storefront URL<input type="url" required value={form.publicSiteUrl} onChange={event => setForm({ ...form, publicSiteUrl: event.target.value })} placeholder="https://your-shop.example" /><small>Magic-link ও activation destination; HTTPS URL দিন।</small></label><label className="field full-field">Verified Resend sender email<input type="email" maxLength={320} value={form.resendFromEmail} onChange={event => setForm({ ...form, resendFromEmail: event.target.value })} placeholder="orders@your-verified-domain.com" /><small>Resend-এ verify করা sender domain থেকে হতে হবে।</small></label></div><div className="email-provider-state"><span className={`status-chip ${emailConfig.data?.resend?.configured ? "status-fulfilled" : "status-awaiting_payment"}`}><i />{emailConfig.isLoading ? "Checking…" : emailConfig.data?.resend?.configured ? "RESEND KEY CONFIGURED" : "RESEND KEY NOT SET"}</span><span className={`status-chip ${senderVerified ? "status-fulfilled" : "status-fulfillment_unknown"}`}><i />{senderVerified ? "SENDER VERIFIED" : "SENDER NEEDS VERIFICATION"}</span><p>{emailConfig.data?.domains.length ? `Verified domains: ${emailConfig.data.domains.filter(domain => domain.status === "verified" && domain.sendingEnabled).map(domain => domain.name).join(", ") || "none"}` : "Resend account-এ domain verify ও sending enable করুন."}</p><a className="text-link" href="https://resend.com/domains" target="_blank" rel="noreferrer">Resend domain settings <ExternalLink size={12} /></a></div><label className="field email-key-field">Resend API key <span className="optional">key শুধু secure server request-এ যাবে, পরে দেখানো হবে না</span><input type="password" autoComplete="new-password" value={resendKey} onChange={event => setResendKey(event.target.value)} minLength={8} maxLength={2048} placeholder={emailConfig.data?.resend?.configured ? "Replace করতে নতুন Resend key লিখুন" : "re_…"} /></label><button type="button" className="button button-secondary" onClick={() => configureEmail.mutate({ apiKey: resendKey })} disabled={!resendKey.trim() || configureEmail.isPending}>{configureEmail.isPending ? <LoaderCircle className="spin" size={14} /> : <ShieldCheck size={14} />}{emailConfig.data?.resend?.configured ? "Verify & replace Resend key" : "Verify & save Resend key"}</button></section>
       <div className="settings-save-row"><span>{data?.updatedAt ? `Last updated ${dateText(data.updatedAt)}` : "Manual payment setup unfinished"}</span><button className="button button-primary" type="submit" disabled={save.isPending}>{save.isPending ? <LoaderCircle className="spin" size={14} /> : <Save size={14} />} Save settings</button></div>
     </form>}
     <AdminSecuritySection />

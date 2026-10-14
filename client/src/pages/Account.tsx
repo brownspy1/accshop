@@ -1,7 +1,7 @@
 import { trpc } from "@/lib/trpc";
 import { formatMoney } from "@/lib/shop";
 import StoreHeader from "@/components/StoreHeader";
-import { AlertTriangle, ArrowRight, CheckCircle2, Copy, KeyRound, LoaderCircle, LogOut, Mail, PackageCheck, RefreshCw, ShieldCheck } from "lucide-react";
+import { AlertTriangle, ArrowRight, CheckCircle2, Copy, KeyRound, LoaderCircle, LogOut, Mail, PackageCheck, RefreshCw, ShieldCheck, UserPlus } from "lucide-react";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { Link } from "wouter";
 import { toast } from "sonner";
@@ -18,7 +18,7 @@ const deliveryLabels: Record<string, string> = {
 
 export function VerifyAccount() {
   const verify = trpc.customer.verifyLink.useMutation();
-  const [message, setMessage] = useState("আপনার নিরাপদ link যাচাই করা হচ্ছে…");
+  const [message, setMessage] = useState("আপনার অ্যাক্টিভেশন লিঙ্ক যাচাই করা হচ্ছে…");
   const didVerify = useRef(false);
   useEffect(() => {
     if (didVerify.current) return;
@@ -28,24 +28,64 @@ export function VerifyAccount() {
     verify.mutate({ token }, {
       onSuccess: () => {
         window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
-        setMessage("Email verify হয়েছে। আপনার account খোলা হচ্ছে…");
-        window.setTimeout(() => window.location.replace("/account"), 700);
+        setMessage("🎉 আপনার অ্যাকাউন্ট সফলভাবে সক্রিয় (Active) হয়েছে! অ্যাকাউন্টে প্রবেশ করা হচ্ছে…");
+        window.setTimeout(() => window.location.replace("/account"), 800);
       },
-      onError: error => setMessage(error.message || "এই link expire হয়েছে বা আগে ব্যবহার হয়েছে। নতুন link চান।"),
+      onError: error => setMessage(error.message || "এই লিঙ্কটির মেয়াদ শেষ হয়েছে বা ইতিমধ্যে ব্যবহার করা হয়েছে।"),
     });
   }, []);
-  return <div className="shop-page"><StoreHeader /><main className="account-page container-wide"><section className="account-panel account-verify"><div className="account-mark"><ShieldCheck size={25} /></div><span className="eyebrow">SECURE CUSTOMER ACCOUNT</span><h1>Email verification</h1><p>{verify.isPending && <LoaderCircle className="spin" size={15} />} {message}</p><Link className="button button-secondary" href="/account">Account page <ArrowRight size={15} /></Link></section></main></div>;
+  return (
+    <div className="shop-page">
+      <StoreHeader />
+      <main className="account-page container-wide">
+        <section className="account-panel account-verify">
+          <div className="account-mark"><ShieldCheck size={25} /></div>
+          <span className="eyebrow">CUSTOMER ACCOUNT ACTIVATION</span>
+          <h1>অ্যাকাউন্ট অ্যাক্টিভেশন</h1>
+          <p>{verify.isPending && <LoaderCircle className="spin" size={15} />} {message}</p>
+          <Link className="button button-secondary" href="/account">Account page <ArrowRight size={15} /></Link>
+        </section>
+      </main>
+    </div>
+  );
 }
 
 export default function Account() {
   const utils = trpc.useUtils();
+  const [authMode, setAuthMode] = useState<"register" | "login">("register");
+
+  // Registration form state
+  const [regName, setRegName] = useState("");
+  const [regEmail, setRegEmail] = useState("");
+  const [regPhone, setRegPhone] = useState("");
+
+  // Login form state
   const [email, setEmail] = useState("");
   const [phoneOrOrder, setPhoneOrOrder] = useState("");
+
   const [errorMessage, setErrorMessage] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
   const [directUrl, setDirectUrl] = useState<string | null>(null);
 
   const account = trpc.customer.me.useQuery(undefined, { retry: false, refetchOnWindowFocus: true });
+
+  const register = trpc.customer.register.useMutation({
+    onSuccess: result => {
+      setErrorMessage("");
+      setSuccessMessage(result.message);
+      if (result.directUrl) {
+        setDirectUrl(result.directUrl);
+      } else {
+        setDirectUrl(null);
+      }
+      toast.success(result.message);
+    },
+    onError: error => {
+      setErrorMessage(error.message);
+      setSuccessMessage("");
+      toast.error(error.message);
+    },
+  });
 
   const loginDirect = trpc.customer.loginDirect.useMutation({
     onSuccess: () => {
@@ -101,7 +141,19 @@ export default function Account() {
     onError: error => toast.error(error.message),
   });
 
-  const submit = (event: FormEvent) => {
+  const submitRegister = (event: FormEvent) => {
+    event.preventDefault();
+    setErrorMessage("");
+    setSuccessMessage("");
+    setDirectUrl(null);
+    register.mutate({
+      name: regName.trim(),
+      email: regEmail.trim(),
+      phone: regPhone.trim() || undefined,
+    });
+  };
+
+  const submitLogin = (event: FormEvent) => {
     event.preventDefault();
     setErrorMessage("");
     setSuccessMessage("");
@@ -127,8 +179,8 @@ export default function Account() {
           <>
             <section className="account-welcome">
               <div>
-                <div className="eyebrow">VERIFIED CUSTOMER ACCOUNT</div>
-                <h1>আপনার অর্ডার ও activation</h1>
+                <div className="eyebrow">VERIFIED & ACTIVE CUSTOMER ACCOUNT</div>
+                <h1>আপনার অ্যাকাউন্ট ও অর্ডার</h1>
                 <p>{account.data.customer.name || account.data.customer.email} · {account.data.customer.email}</p>
               </div>
               <button className="button button-light" onClick={() => logout.mutate()} disabled={logout.isPending}>
@@ -208,67 +260,164 @@ export default function Account() {
           </>
         ) : (
           <section className="account-panel account-login">
-            <div className="account-mark"><KeyRound size={23} /></div>
-            <div className="eyebrow">DOMAINFO-FREE INSTANT ACCESS</div>
-            <h1>আপনার অ্যাকাউন্ট ও অর্ডার খুলুন</h1>
-            <p>ডোমেইন বা ইমেইল ভেরিফিকেশন ছাড়াও Checkout-এ ব্যবহৃত Phone নম্বর দিয়ে সরাসরি প্রবেশ করতে পারবেন।</p>
+            <div className="account-mark">
+              {authMode === "register" ? <UserPlus size={23} /> : <KeyRound size={23} />}
+            </div>
+            <div className="eyebrow">
+              {authMode === "register" ? "NEW CUSTOMER REGISTRATION" : "SECURE CUSTOMER LOGIN"}
+            </div>
+            <h1>{authMode === "register" ? "অ্যাকাউন্ট তৈরি করুন" : "অ্যাকাউন্টে প্রবেশ করুন"}</h1>
+            <p>
+              {authMode === "register"
+                ? "আপনার নাম ও ইমেইল দিয়ে অ্যাকাউন্ট খুলুন। আপনার ইমেইল ইনবক্সে পাঠানো অ্যাক্টিভেশন লিঙ্কে ক্লিক করলেই অ্যাকাউন্ট সক্রিয় হয়ে যাবে।"
+                : "আপনার রেজিস্টার্ড ইমেইল অথবা Checkout-এ ব্যবহৃত Phone নম্বর ও Order কোড দিয়ে অ্যাকাউন্টে প্রবেশ করুন।"}
+            </p>
 
-            <div className="account-track-shortcut">
+            {/* Auth Mode Toggle */}
+            <div className="auth-mode-switch">
+              <button
+                type="button"
+                className={`auth-tab-btn ${authMode === "register" ? "active" : ""}`}
+                onClick={() => {
+                  setAuthMode("register");
+                  setErrorMessage("");
+                  setSuccessMessage("");
+                  setDirectUrl(null);
+                }}
+              >
+                <UserPlus size={15} /> অ্যাকাউন্ট তৈরি (Sign Up)
+              </button>
+              <button
+                type="button"
+                className={`auth-tab-btn ${authMode === "login" ? "active" : ""}`}
+                onClick={() => {
+                  setAuthMode("login");
+                  setErrorMessage("");
+                  setSuccessMessage("");
+                  setDirectUrl(null);
+                }}
+              >
+                <KeyRound size={15} /> লগইন (Sign In)
+              </button>
+            </div>
+
+            {authMode === "register" ? (
+              <form onSubmit={submitRegister}>
+                <label className="field">
+                  আপনার পূর্ণ নাম (Full Name)
+                  <input
+                    type="text"
+                    required
+                    maxLength={160}
+                    value={regName}
+                    onChange={e => {
+                      setRegName(e.target.value);
+                      setErrorMessage("");
+                    }}
+                    placeholder="যেমন: মোঃ রহিম অথবা John Doe"
+                  />
+                </label>
+
+                <label className="field">
+                  আপনার ইমেইল (Gmail / Email)
+                  <input
+                    type="email"
+                    required
+                    maxLength={320}
+                    value={regEmail}
+                    onChange={e => {
+                      setRegEmail(e.target.value);
+                      setErrorMessage("");
+                    }}
+                    placeholder="yourname@gmail.com"
+                  />
+                  <small style={{ color: "#6a7773", fontSize: "12px", marginTop: "4px" }}>
+                    এই ঠিকানায় সরাসরি অ্যাক্টিভেশন লিঙ্ক পাঠানো হবে।
+                  </small>
+                </label>
+
+                <label className="field">
+                  মোবাইল নম্বর <span className="track-optional-tag">(অপশনাল)</span>
+                  <input
+                    type="text"
+                    maxLength={64}
+                    value={regPhone}
+                    onChange={e => setRegPhone(e.target.value)}
+                    placeholder="01XXXXXXXXX"
+                  />
+                </label>
+
+                <button
+                  className="button button-primary full-button"
+                  type="submit"
+                  disabled={register.isPending}
+                >
+                  {register.isPending ? (
+                    <LoaderCircle className="spin" size={15} />
+                  ) : (
+                    <Mail size={15} />
+                  )}{" "}
+                  অ্যাকাউন্ট তৈরি ও অ্যাক্টিভেশন লিঙ্ক পাঠান <ArrowRight size={15} />
+                </button>
+              </form>
+            ) : (
+              <form onSubmit={submitLogin}>
+                <label className="field">
+                  Checkout Email অথবা Phone নম্বর
+                  <input
+                    type="text"
+                    required
+                    maxLength={320}
+                    autoComplete="username"
+                    value={email}
+                    onChange={event => {
+                      setEmail(event.target.value);
+                      setErrorMessage("");
+                      setSuccessMessage("");
+                      setDirectUrl(null);
+                    }}
+                    placeholder="you@example.com অথবা 01XXXXXXXXX"
+                  />
+                </label>
+
+                <label className="field">
+                  Phone নম্বর অথবা Order কোড <span className="track-optional-tag">(সরাসরি প্রবেশের জন্য)</span>
+                  <input
+                    type="text"
+                    maxLength={64}
+                    value={phoneOrOrder}
+                    onChange={event => {
+                      setPhoneOrOrder(event.target.value);
+                      setErrorMessage("");
+                      setSuccessMessage("");
+                      setDirectUrl(null);
+                    }}
+                    placeholder="01XXXXXXXXX অথবা AZ-XXXXXXXXXXXXX"
+                  />
+                </label>
+
+                <button
+                  className="button button-primary full-button"
+                  type="submit"
+                  disabled={request.isPending || loginDirect.isPending}
+                >
+                  {request.isPending || loginDirect.isPending ? (
+                    <LoaderCircle className="spin" size={15} />
+                  ) : (
+                    <KeyRound size={15} />
+                  )}{" "}
+                  অ্যাকাউন্টে প্রবেশ করুন <ArrowRight size={15} />
+                </button>
+              </form>
+            )}
+
+            <div className="account-track-shortcut" style={{ marginTop: "18px" }}>
               <PackageCheck size={16} />
               <div>
                 শুধু নির্দিষ্ট কোনো অর্ডারের ডেলিভারি কোড দেখতে চান?{" "}
                 <Link href="/track">সরাসরি Order Tracking করুন &rarr;</Link>
               </div>
             </div>
-
-            <form onSubmit={submit}>
-              <label className="field">
-                Checkout Email অথবা Phone নম্বর
-                <input
-                  type="text"
-                  required
-                  maxLength={320}
-                  autoComplete="username"
-                  value={email}
-                  onChange={event => {
-                    setEmail(event.target.value);
-                    setErrorMessage("");
-                    setSuccessMessage("");
-                    setDirectUrl(null);
-                  }}
-                  placeholder="you@example.com অথবা 01XXXXXXXXX"
-                />
-              </label>
-
-              <label className="field">
-                Phone নম্বর অথবা Order কোড <span className="track-optional-tag">(সরাসরি প্রবেশের জন্য)</span>
-                <input
-                  type="text"
-                  maxLength={64}
-                  value={phoneOrOrder}
-                  onChange={event => {
-                    setPhoneOrOrder(event.target.value);
-                    setErrorMessage("");
-                    setSuccessMessage("");
-                    setDirectUrl(null);
-                  }}
-                  placeholder="01XXXXXXXXX অথবা AZ-XXXXXXXXXXXXX"
-                />
-              </label>
-
-              <button
-                className="button button-primary full-button"
-                type="submit"
-                disabled={request.isPending || loginDirect.isPending}
-              >
-                {request.isPending || loginDirect.isPending ? (
-                  <LoaderCircle className="spin" size={15} />
-                ) : (
-                  <KeyRound size={15} />
-                )}{" "}
-                অ্যাকাউন্টে প্রবেশ করুন <ArrowRight size={15} />
-              </button>
-            </form>
 
             {directUrl && (
               <div className="account-direct-access">
@@ -295,7 +444,10 @@ export default function Account() {
             )}
 
             <div className="account-privacy">
-              <ShieldCheck size={15} /> Checkout-এ দেওয়া Phone নম্বর বা Order Code মিললেই কোনো ইমেইল লিঙ্ক ছাড়াই তাৎক্ষণিক অ্যাকাউন্ট খুলে যাবে।
+              <ShieldCheck size={15} />
+              {authMode === "register"
+                ? "রেজিস্ট্রেশনের পর আপনার ইমেইলে একটি সুরক্ষিত অ্যাক্টিভেশন লিঙ্ক যাবে। লিঙ্কে ক্লিক করলেই অ্যাকাউন্ট সক্রিয় হয়ে যাবে।"
+                : "Checkout-এ দেওয়া Phone নম্বর বা Order Code মিললেই কোনো ইমেইল লিঙ্ক ছাড়াই তাৎক্ষণিক অ্যাকাউন্ট খুলে যাবে।"}
             </div>
             <Link className="back-link" href="/">Shop-এ ফিরুন</Link>
           </section>

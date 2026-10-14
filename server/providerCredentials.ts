@@ -4,7 +4,7 @@ import { providerCredentials } from "../drizzle/schema";
 import { getDb } from "./db";
 
 export type ShopProvider = "acczone" | "couponshops";
-export type CredentialProvider = ShopProvider | "resend";
+export type CredentialProvider = ShopProvider | "resend" | "gmail";
 
 type EncryptedKey = { ciphertext: string; nonce: string; authTag: string };
 
@@ -16,6 +16,7 @@ function encryptionKey(provider: CredentialProvider) {
     acczone: "acczone-shop/provider-key/aes-256-gcm/v1",
     couponshops: "acczone-shop/couponshops/provider-key/aes-256-gcm/v1",
     resend: "acczone-shop/resend-key/aes-256-gcm/v1",
+    gmail: "acczone-shop/gmail-key/aes-256-gcm/v1",
   }[provider];
   return Buffer.from(hkdfSync(
     "sha256",

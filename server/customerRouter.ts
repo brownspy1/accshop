@@ -64,6 +64,94 @@ function normalizeOrderNo(o: string | null | undefined): string {
 }
 
 export const customerAccountRouter = router({
+  register: sameOriginProcedure.input(z.object({
+    name: z.string().trim().min(2, "নাম কমপক্ষে ২ অক্ষরের হতে হবে").max(160),
+    email: z.string().trim().email("সঠিক ইমেইল ঠিকানা দিন").max(320),
+    phone: z.string().trim().max(64).optional(),
+  })).mutation(async ({ input }) => {
+    const db = await getDb();
+    if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database is not available." });
+
+    const email = input.email.toLowerCase().trim();
+    const rateKey = `register:${createHash("sha256").update(email).digest("hex")}`;
+    if (!checkRateLimit(rateKey, 10, 15 * 60_000)) {
+      throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: "অনেকবার অ্যাকাউন্ট তৈরির চেষ্টা করা হয়েছে। কিছুক্ষণ পর আবার চেষ্টা করুন।" });
+    }
+
+    let accountId: number;
+    let tokenStr: string;
+    let isAlreadyVerified = false;
+
+    const result = await db.transaction(async tx => {
+      const [existing] = await tx.select().from(customerAccounts).where(eq(customerAccounts.email, email)).for("update");
+      const token = newMagicToken();
+
+      if (existing) {
+        if (existing.emailVerifiedAt) {
+          isAlreadyVerified = true;
+          await tx.update(customerAccounts).set({
+            magicTokenHash: token.hash,
+            magicTokenExpiresAt: token.expiresAt,
+            magicTokenPurpose: "login",
+            updatedAt: new Date(),
+          }).where(eq(customerAccounts.id, existing.id));
+          return { id: existing.id, token: token.token, purpose: "login" as const };
+        } else {
+          await tx.update(customerAccounts).set({
+            name: input.name.trim() || existing.name,
+            phone: input.phone?.trim() || existing.phone,
+            magicTokenHash: token.hash,
+            magicTokenExpiresAt: token.expiresAt,
+            magicTokenPurpose: "verify",
+            updatedAt: new Date(),
+          }).where(eq(customerAccounts.id, existing.id));
+          return { id: existing.id, token: token.token, purpose: "verify" as const };
+        }
+      }
+
+      const [newAcc] = await tx.insert(customerAccounts).values({
+        name: input.name.trim(),
+        email,
+        phone: input.phone?.trim() || "",
+        emailVerifiedAt: null,
+        magicTokenHash: token.hash,
+        magicTokenExpiresAt: token.expiresAt,
+        magicTokenPurpose: "verify",
+      }).returning();
+      return { id: newAcc.id, token: token.token, purpose: "verify" as const };
+    });
+
+    accountId = result.id;
+    tokenStr = result.token;
+
+    let mailResult = "failed";
+    try {
+      mailResult = await sendCustomerMagicLink(accountId, tokenStr, result.purpose);
+    } catch (e) {
+      console.warn("[Register] Failed to send activation link:", e);
+    }
+
+    if (isAlreadyVerified) {
+      return {
+        success: true,
+        alreadyVerified: true,
+        message: mailResult === "sent"
+          ? "এই ইমেইল দিয়ে ইতোমধ্যে অ্যাকাউন্ট রয়েছে এবং সক্রিয় আছে। আপনার ইনবক্সে নিরাপদ লগইন লিঙ্ক পাঠানো হয়েছে।"
+          : "এই ইমেইল দিয়ে ইতোমধ্যে সক্রিয় অ্যাকাউন্ট রয়েছে।",
+        directUrl: mailResult === "sent" ? null : `/account/verify#token=${tokenStr}`,
+      };
+    }
+
+    return {
+      success: true,
+      alreadyVerified: false,
+      message: mailResult === "sent"
+        ? "আপনার অ্যাকাউন্টে একটি অ্যাক্টিভেশন লিঙ্ক পাঠানো হয়েছে! আপনার Gmail/ইমেইল ইনবক্স চেক করে লিঙ্কটিতে ক্লিক করলেই অ্যাকাউন্ট অ্যাক্টিভ হয়ে যাবে।"
+        : "অ্যাকাউন্ট তৈরি হয়েছে। নিচের বাটনে ক্লিক করে অ্যাকাউন্ট অ্যাক্টিভ করুন।",
+      directUrl: mailResult === "sent" ? null : `/account/verify#token=${tokenStr}`,
+    };
+  }),
+
   loginDirect: sameOriginProcedure.input(z.object({
     email: z.string().trim().max(320).optional(),
     identifier: z.string().trim().max(320).optional(),

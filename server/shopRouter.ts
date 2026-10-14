@@ -13,6 +13,7 @@ import { refreshCatalogIfNeeded, SUPPLIER_STOCK_MAX_AGE_MS, syncProviderCatalog 
 import { markupRatioForManualRetailPrice, supplierCostInStoreCurrency } from "./pricing";
 import { hashMagicToken, newMagicToken } from "./customerAuth";
 import { customerRecentDeliveryMail, inspectEmailConfigForAdmin, sendCustomerMagicLink, sendOrderCredentialEmail } from "./emailDelivery";
+import { saveGmailCredentials, sendGmailEmail } from "./gmailMailer";
 import { listResendDomains, verifiedSenderDomain } from "./resend";
 import { setDynamicAdminEmail } from "./_core/adminAllowlist";
 import { hashAdminPassword, verifyAdminPassword, verifyFallbackAdminSecret } from "./adminAuth";
@@ -314,7 +315,7 @@ export const shopRouter = router({
             await tx.update(customerAccounts).set({
               name: input.customerName.trim(),
               phone: input.customerPhone.trim(),
-              emailVerifiedAt: existingAccount.emailVerifiedAt ?? new Date(),
+              emailVerifiedAt: existingAccount.emailVerifiedAt,
               updatedAt: new Date(),
             }).where(eq(customerAccounts.id, existingAccount.id));
             const tokenStillValid = existingAccount.magicTokenHash && existingAccount.magicTokenExpiresAt && new Date(existingAccount.magicTokenExpiresAt).getTime() > Date.now();
@@ -329,7 +330,7 @@ export const shopRouter = router({
               email,
               name: input.customerName.trim(),
               phone: input.customerPhone.trim(),
-              emailVerifiedAt: new Date(),
+              emailVerifiedAt: null,
               magicTokenHash: token.hash,
               magicTokenExpiresAt: token.expiresAt,
               magicTokenPurpose: "verify",
@@ -648,6 +649,39 @@ export const shopRouter = router({
     email: router({
       status: adminProcedure.query(async () => inspectEmailConfigForAdmin()),
       orderStatus: adminProcedure.input(z.object({ orderId: z.number().int().positive() })).query(async ({ input }) => customerRecentDeliveryMail(input.orderId)),
+      configureGmail: adminProcedure.input(z.object({
+        gmailUser: z.string().trim().email("সঠিক Gmail ঠিকানা দিন").max(320),
+        appPassword: z.string().trim().min(8, "কমপক্ষে ৮ অক্ষরের App Password দিন").max(128),
+        fromName: z.string().trim().max(100).optional(),
+      })).mutation(async ({ input }) => {
+        try {
+          const res = await saveGmailCredentials(input.gmailUser, input.appPassword, input.fromName || "AccZone Shop");
+          return { success: true, user: res.user, message: "Gmail সফলভাবে সংযুক্ত ও যাচাই হয়েছে! এখন থেকে সব অ্যাকাউন্ট অ্যাক্টিভেশন ও ডেলিভারি মেইল এই Gmail থেকে সরাসরি যাবে।" };
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : "Gmail setup failed";
+          throw new TRPCError({ code: "BAD_REQUEST", message: msg });
+        }
+      }),
+      sendTestEmail: adminProcedure.input(z.object({
+        targetEmail: z.string().trim().email("সঠিক প্রাপক ইমেইল দিন"),
+      })).mutation(async ({ input }) => {
+        try {
+          const result = await sendGmailEmail({
+            to: input.targetEmail.trim(),
+            subject: "AccZone Shop - টেস্ট ইমেইল কনফার্মেশন",
+            html: `<div style="font-family:Arial,sans-serif;padding:24px;border:1px solid #e2e8f0;border-radius:10px;max-width:500px;margin:auto">
+              <h2 style="color:#059669;margin-top:0">🎉 Gmail SMTP সফলভাবে কাজ করছে!</h2>
+              <p>আপনার AccZone Shop থেকে এই টেস্ট ইমেইলটি সফলভাবে পাঠানো হয়েছে।</p>
+              <p style="color:#64748b;font-size:13px">AccZone Shop Automated Mailer</p>
+            </div>`,
+            text: "Gmail SMTP সফলভাবে কাজ করছে! AccZone Shop থেকে এই টেস্ট ইমেইল পাঠানো হয়েছে।",
+          });
+          return { success: true, messageId: result.messageId, message: "টেস্ট ইমেইল সফলভাবে পাঠানো হয়েছে! ইনবক্স চেক করুন।" };
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : "Test email failed";
+          throw new TRPCError({ code: "BAD_REQUEST", message: msg });
+        }
+      }),
       configureKey: adminProcedure.input(z.object({ apiKey: z.string().trim().min(8).max(2048) })).mutation(async ({ input }) => {
         try {
           const domains = await verifyAndSaveProviderApiKey("resend", input.apiKey, listResendDomains);
