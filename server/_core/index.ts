@@ -14,7 +14,7 @@ import { startKeepAlive } from "./keepAlive";
 async function startServer() {
   const app = express();
   app.disable("x-powered-by");
-  app.set("trust proxy", 1);
+  app.set("trust proxy", true);
   const server = createServer(app);
   app.use((_req, res, next) => {
     res.setHeader("X-Content-Type-Options", "nosniff");

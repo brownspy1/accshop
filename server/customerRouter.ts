@@ -8,17 +8,24 @@ import { sendCustomerMagicLink, sendOrderCredentialEmail } from "./emailDelivery
 import { clearCustomerSessionCookie, hashMagicToken, newMagicToken, setCustomerSessionCookie } from "./customerAuth";
 import { customerProcedure, router, sameOriginProcedure } from "./_core/trpc";
 
-const accessRate = new Map<string, { count: number; resetAt: number }>();
-function allow(key: string, maximum: number, intervalMs: number) {
+const failedAttempts = new Map<string, { count: number; resetAt: number }>();
+function checkRateLimit(key: string, maxFailures: number, intervalMs: number): boolean {
   const now = Date.now();
-  const current = accessRate.get(key);
+  const current = failedAttempts.get(key);
+  if (!current || current.resetAt <= now) return true;
+  return current.count < maxFailures;
+}
+function recordFailure(key: string, intervalMs: number): void {
+  const now = Date.now();
+  const current = failedAttempts.get(key);
   if (!current || current.resetAt <= now) {
-    accessRate.set(key, { count: 1, resetAt: now + intervalMs });
-    return true;
+    failedAttempts.set(key, { count: 1, resetAt: now + intervalMs });
+  } else {
+    current.count += 1;
   }
-  if (current.count >= maximum) return false;
-  current.count += 1;
-  return true;
+}
+function clearFailure(key: string): void {
+  failedAttempts.delete(key);
 }
 function normalizeCodes(raw: string | null, _quantity?: number): string[] {
   try {
@@ -55,15 +62,16 @@ export const customerAccountRouter = router({
     const email = input.email.trim().toLowerCase();
     const secret = input.phoneOrOrder.trim();
 
-    const rateKey = `${ctx.req.ip || "unknown"}:${createHash("sha256").update(email).digest("hex")}`;
-    if (!allow(rateKey, 6, 10 * 60_000) || !allow(`ip:${ctx.req.ip || "unknown"}`, 25, 10 * 60_000)) {
-      throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: "অনেকবার চেষ্টা করা হয়েছে। কিছুক্ষণ পরে আবার চেষ্টা করুন।" });
+    const rateKey = `login:${createHash("sha256").update(email).digest("hex")}`;
+    if (!checkRateLimit(rateKey, 20, 10 * 60_000)) {
+      throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: "অনেকবার ভুল তথ্য দেওয়া হয়েছে। ১০ মিনিট পরে আবার চেষ্টা করুন।" });
     }
 
     let [account] = await db.select().from(customerAccounts).where(eq(customerAccounts.email, email)).limit(1);
     const customerOrders = await db.select().from(orders).where(eq(orders.customerEmail, email));
 
     if (!customerOrders.length && !account) {
+      recordFailure(rateKey, 10 * 60_000);
       throw new TRPCError({ code: "NOT_FOUND", message: "এই Email ঠিকানায় কোনো অর্ডার বা অ্যাকাউন্ট পাওয়া যায়নি।" });
     }
 
@@ -86,11 +94,15 @@ export const customerAccountRouter = router({
     }
 
     if (!matched) {
+      recordFailure(rateKey, 10 * 60_000);
       throw new TRPCError({
         code: "UNAUTHORIZED",
         message: "প্রদত্ত Phone নম্বর বা Order code-এর সাথে অ্যাকাউন্টের তথ্যের মিল নেই।",
       });
     }
+
+    // Success! Clear any past failure counts
+    clearFailure(rateKey);
 
     if (!account) {
       const [newAcc] = await db.insert(customerAccounts).values({
@@ -119,9 +131,9 @@ export const customerAccountRouter = router({
     const db = await getDb();
     if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database is not available." });
     const email = input.email.toLowerCase().trim();
-    const rateKey = `${ctx.req.ip || "unknown"}:${createHash("sha256").update(email).digest("hex")}`;
-    if (!allow(rateKey, 6, 10 * 60_000) || !allow(`ip:${ctx.req.ip || "unknown"}`, 25, 10 * 60_000)) {
-      throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: "অনেকবার link চাওয়া হয়েছে। কিছুক্ষণ পরে আবার চেষ্টা করুন।" });
+    const rateKey = `req:${createHash("sha256").update(email).digest("hex")}`;
+    if (!checkRateLimit(rateKey, 30, 10 * 60_000)) {
+      throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: "অনেকবার লিঙ্ক চাওয়া হয়েছে। কিছুক্ষণ পরে আবার চেষ্টা করুন।" });
     }
 
     const secret = input.phoneOrOrder?.trim();
@@ -286,7 +298,8 @@ export const customerAccountRouter = router({
   resendCredentials: customerProcedure.input(z.object({ orderId: z.number().int().positive() })).mutation(async ({ input, ctx }) => {
     const db = await getDb();
     if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database is not available." });
-    if (!allow(`resend:${ctx.customer.id}`, 3, 60 * 60_000)) throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: "এই account-এর delivery email resend limit পূর্ণ হয়েছে। পরে আবার চেষ্টা করুন।" });
+    if (!checkRateLimit(`resend:${ctx.customer.id}`, 5, 60 * 60_000)) throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: "এই account-এর delivery email resend limit পূর্ণ হয়েছে। পরে আবার চেষ্টা করুন।" });
+    recordFailure(`resend:${ctx.customer.id}`, 60 * 60_000);
     const [order] = await db.select().from(orders).where(and(eq(orders.id, input.orderId), or(eq(orders.customerAccountId, ctx.customer.id), eq(orders.customerEmail, ctx.customer.email.toLowerCase())))).limit(1);
     if (!order || order.status !== "fulfilled") throw new TRPCError({ code: "NOT_FOUND", message: "সম্পূর্ণ order পাওয়া যায়নি।" });
     const recent = await db.select().from(emailOutbox).where(and(eq(emailOutbox.orderId, order.id), eq(emailOutbox.kind, "delivery"), gte(emailOutbox.createdAt, new Date(Date.now() - 60 * 60_000)))).limit(1);

@@ -1,7 +1,7 @@
 import { trpc } from "@/lib/trpc";
 import { formatMoney } from "@/lib/shop";
 import StoreHeader from "@/components/StoreHeader";
-import { ArrowRight, CheckCircle2, Copy, KeyRound, LoaderCircle, LogOut, Mail, PackageCheck, RefreshCw, ShieldCheck } from "lucide-react";
+import { AlertTriangle, ArrowRight, CheckCircle2, Copy, KeyRound, LoaderCircle, LogOut, Mail, PackageCheck, RefreshCw, ShieldCheck } from "lucide-react";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { Link } from "wouter";
 import { toast } from "sonner";
@@ -41,7 +41,8 @@ export default function Account() {
   const utils = trpc.useUtils();
   const [email, setEmail] = useState("");
   const [phoneOrOrder, setPhoneOrOrder] = useState("");
-  const [requestMessage, setRequestMessage] = useState("");
+  const [errorMessage, setErrorMessage] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
   const [directUrl, setDirectUrl] = useState<string | null>(null);
 
   const account = trpc.customer.me.useQuery(undefined, { retry: false, refetchOnWindowFocus: true });
@@ -49,34 +50,44 @@ export default function Account() {
   const loginDirect = trpc.customer.loginDirect.useMutation({
     onSuccess: () => {
       toast.success("অ্যাকাউন্টে সফলভাবে প্রবেশ করা হয়েছে!");
-      setRequestMessage("");
+      setErrorMessage("");
+      setSuccessMessage("অ্যাকাউন্টে সফলভাবে প্রবেশ করা হয়েছে!");
       setDirectUrl(null);
       void utils.customer.me.invalidate();
     },
     onError: err => {
       toast.error(err.message);
-      setRequestMessage(err.message);
+      setErrorMessage(err.message);
+      setSuccessMessage("");
     },
   });
 
   const request = trpc.customer.requestLink.useMutation({
     onSuccess: result => {
-      setRequestMessage(result.message);
+      setErrorMessage("");
       if (result.verified) {
         toast.success("অ্যাকাউন্টে সরাসরি প্রবেশ করা হয়েছে!");
+        setSuccessMessage("অ্যাকাউন্টে সরাসরি প্রবেশ করা হয়েছে!");
         setDirectUrl(null);
         void utils.customer.me.invalidate();
       } else if (result.directUrl) {
         setDirectUrl(result.directUrl);
+        setSuccessMessage(result.message);
+      } else {
+        setSuccessMessage(result.message);
       }
     },
-    onError: error => setRequestMessage(error.message),
+    onError: error => {
+      setErrorMessage(error.message);
+      setSuccessMessage("");
+    },
   });
 
   const logout = trpc.customer.logout.useMutation({
     onSuccess: () => {
       void utils.customer.me.invalidate();
-      setRequestMessage("আপনি নিরাপদে sign out করেছেন।");
+      setSuccessMessage("আপনি নিরাপদে sign out করেছেন।");
+      setErrorMessage("");
       setDirectUrl(null);
     },
   });
@@ -92,7 +103,8 @@ export default function Account() {
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    setRequestMessage("");
+    setErrorMessage("");
+    setSuccessMessage("");
     setDirectUrl(null);
     if (phoneOrOrder.trim()) {
       loginDirect.mutate({ email: email.trim(), phoneOrOrder: phoneOrOrder.trim() });
@@ -220,7 +232,8 @@ export default function Account() {
                   value={email}
                   onChange={event => {
                     setEmail(event.target.value);
-                    setRequestMessage("");
+                    setErrorMessage("");
+                    setSuccessMessage("");
                     setDirectUrl(null);
                   }}
                   placeholder="you@example.com"
@@ -235,7 +248,8 @@ export default function Account() {
                   value={phoneOrOrder}
                   onChange={event => {
                     setPhoneOrOrder(event.target.value);
-                    setRequestMessage("");
+                    setErrorMessage("");
+                    setSuccessMessage("");
                     setDirectUrl(null);
                   }}
                   placeholder="01XXXXXXXXX অথবা AZ-XXXXXXXXXXXXX"
@@ -259,17 +273,24 @@ export default function Account() {
             {directUrl && (
               <div className="account-direct-access">
                 <b>ডোমেইন ছাড়া সরাসরি ভেরিফিকেশন লিঙ্ক প্রস্তুত</b>
-                <p>{requestMessage}</p>
+                <p>{successMessage}</p>
                 <Link className="button button-primary" href={directUrl}>
                   এখনই অ্যাকাউন্টে প্রবেশ করুন <ArrowRight size={14} />
                 </Link>
               </div>
             )}
 
-            {requestMessage && !directUrl && (
+            {errorMessage && (
+              <div className="notice warning">
+                <AlertTriangle size={16} />
+                <span>{errorMessage}</span>
+              </div>
+            )}
+
+            {successMessage && !directUrl && (
               <div className="notice account-message">
                 <CheckCircle2 size={16} />
-                <span>{requestMessage}</span>
+                <span>{successMessage}</span>
               </div>
             )}
 
