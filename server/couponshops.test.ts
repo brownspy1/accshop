@@ -86,6 +86,42 @@ describe("CouponShops server API client", () => {
     expect(new URL(String(fetchMock.mock.calls[1]?.[0])).href).toBe("https://api.couponshops.org/api/v1/orders/API3F9A1C2B7D4E5F60");
   }, 15_000);
 
+  it("correctly ingests Gemini and diverse services with high max_qty, flat pricing, or INR-only tiers", async () => {
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({
+      ok: true,
+      rate_inr_per_usdt: 100,
+      services: [
+        {
+          service_id: "gemini_pro_18m",
+          name: "Gemini Pro 18M NEW",
+          stock: 50,
+          pricing: [{ min_qty: 1, max_qty: 500, price_inr: 80, price_usdt: 0.8 }],
+        },
+        {
+          service_id: "gemini-advanced.v2",
+          name: "Gemini Advanced 1M",
+          stock: 0,
+          price_inr: 250,
+        },
+      ],
+    }), { status: 200, headers: { "Content-Type": "application/json" } }));
+
+    const services = await getCouponServices();
+    expect(services).toHaveLength(2);
+    expect(services[0]).toMatchObject({
+      serviceId: "gemini_pro_18m",
+      name: "Gemini Pro 18M NEW",
+      stock: 50,
+      tiers: [{ minQuantity: 1, maxQuantity: 500, priceInr: 80, priceUsdt: 0.8 }],
+    });
+    expect(services[1]).toMatchObject({
+      serviceId: "gemini-advanced.v2",
+      name: "Gemini Advanced 1M",
+      stock: 0,
+      tiers: [{ minQuantity: 1, priceInr: 250, priceUsdt: 2.5 }],
+    });
+  });
+
   it("treats insufficient wallet balance as a definite failure and does not echo provider text", async () => {
     fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ ok: false, error: "insufficient_balance", message: "private provider message" }), {
       status: 402, headers: { "Content-Type": "application/json" },

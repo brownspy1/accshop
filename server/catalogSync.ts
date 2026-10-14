@@ -80,7 +80,10 @@ async function performSync(provider: ShopProvider): Promise<SyncResult> {
     const incomingKeys = incoming.map(item => couponServiceKey(item.serviceId));
     for (const item of incoming) {
       const serviceKey = couponServiceKey(item.serviceId);
-      const supplierPrice = item.tiers[0]?.priceUsdt ?? 0;
+      const tier0 = item.tiers[0];
+      const supplierPrice = (tier0?.priceUsdt && tier0.priceUsdt > 0)
+        ? tier0.priceUsdt
+        : (item.rateInrPerUsdt > 0 && tier0?.priceInr ? Number((tier0.priceInr / item.rateInrPerUsdt).toFixed(4)) : 0);
       const previous = previousByKey.get(serviceKey);
       const pricing = previous ? repriceAfterSupplierSync({
         price: previous.supplierPrice, currency: previous.supplierCurrency,

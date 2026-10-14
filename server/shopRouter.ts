@@ -144,7 +144,7 @@ function pricingTiers(raw: string | null): PricingTier[] {
       const maxQuantity = Math.trunc(Number(row.maxQuantity));
       const priceInr = Number(row.priceInr);
       const priceUsdt = Number(row.priceUsdt);
-      return Number.isInteger(minQuantity) && minQuantity >= 1 && maxQuantity >= minQuantity && maxQuantity <= 100
+      return Number.isInteger(minQuantity) && minQuantity >= 1 && maxQuantity >= minQuantity
         && Number.isFinite(priceInr) && priceInr >= 0 && Number.isFinite(priceUsdt) && priceUsdt >= 0
         ? [{ minQuantity, maxQuantity, priceInr, priceUsdt }]
         : [];

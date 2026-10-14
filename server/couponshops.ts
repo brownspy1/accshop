@@ -142,33 +142,95 @@ export async function getCouponBalance() {
 export async function getCouponServices(): Promise<CouponService[]> {
   const key = await getProviderApiKey("couponshops");
   const raw = await request("/services", key);
-  if (!Array.isArray(raw.services)) throw new CouponShopsError("CouponShops returned an invalid services response.");
+  const rawList = Array.isArray(raw.services)
+    ? raw.services
+    : Array.isArray(raw.data)
+      ? raw.data
+      : Array.isArray(raw)
+        ? raw
+        : null;
+  if (!rawList) throw new CouponShopsError("CouponShops returned an invalid services response.");
   const defaultRate = finiteNumber(raw.rate_inr_per_usdt, 0);
-  return raw.services.slice(0, 2_000).flatMap((entry): CouponService[] => {
-    if (!isRecord(entry) || typeof entry.service_id !== "string" || !/^[A-Za-z0-9_-]{1,120}$/.test(entry.service_id) || typeof entry.name !== "string") return [];
-    const stockValue = finiteNumber(entry.stock, 0);
+
+  return rawList.slice(0, 2_000).flatMap((entry): CouponService[] => {
+    if (!isRecord(entry)) return [];
+
+    const rawId = entry.service_id ?? entry.serviceId ?? entry.id ?? entry.key;
+    const serviceId = String(rawId ?? "").trim();
+    if (!serviceId || serviceId.length > 128) return [];
+    if (!/^[A-Za-z0-9_.\- :@#/+]{1,128}$/.test(serviceId)) return [];
+
+    const rawName = entry.name ?? entry.service_name ?? entry.title;
+    const name = typeof rawName === "string" ? rawName.trim() : "";
+    if (!name) return [];
+
+    const stockValue = finiteNumber(entry.stock ?? entry.quantity ?? entry.available, 0);
     const stock = Math.max(0, Math.min(1_000_000, Math.trunc(stockValue)));
-    if (!Array.isArray(entry.pricing) || !entry.pricing.length || entry.pricing.length > 100) return [];
-    const tiers = entry.pricing.flatMap((item): CouponPricingTier[] => {
-      if (!isRecord(item)) return [];
-      const minQuantity = Math.trunc(finiteNumber(item.min_qty));
-      const maxQuantity = Math.trunc(finiteNumber(item.max_qty));
-      const priceInr = finiteNumber(item.price_inr);
-      const priceUsdt = finiteNumber(item.price_usdt);
-      if (minQuantity < 1 || maxQuantity < minQuantity || maxQuantity > 100 || priceInr < 0 || priceUsdt < 0) return [];
-      return [{ minQuantity, maxQuantity, priceInr, priceUsdt }];
-    }).sort((a, b) => a.minQuantity - b.minQuantity);
-    if (!tiers.length) return [];
-    for (let index = 1; index < tiers.length; index += 1) {
-      if (tiers[index]!.minQuantity <= tiers[index - 1]!.maxQuantity) return [];
-    }
+
     const rate = finiteNumber(entry.rate_inr_per_usdt, defaultRate);
+    const effectiveRate = rate > 0 ? rate : defaultRate;
+
+    let tiers: CouponPricingTier[] = [];
+
+    if (Array.isArray(entry.pricing) && entry.pricing.length > 0) {
+      tiers = entry.pricing.flatMap((item): CouponPricingTier[] => {
+        if (!isRecord(item)) return [];
+        let minQuantity = Math.trunc(finiteNumber(item.min_qty ?? item.min_quantity, 1));
+        if (minQuantity < 1) minQuantity = 1;
+        let maxQuantity = Math.trunc(finiteNumber(item.max_qty ?? item.max_quantity, 1_000_000));
+        if (maxQuantity < minQuantity) maxQuantity = Math.max(minQuantity, stock > 0 ? stock : 1_000);
+
+        let priceInr = finiteNumber(item.price_inr ?? item.priceInr ?? item.price, 0);
+        let priceUsdt = finiteNumber(item.price_usdt ?? item.priceUsdt, 0);
+
+        if (priceUsdt <= 0 && priceInr > 0 && effectiveRate > 0) {
+          priceUsdt = Number((priceInr / effectiveRate).toFixed(4));
+        }
+        if (priceInr <= 0 && priceUsdt > 0 && effectiveRate > 0) {
+          priceInr = Number((priceUsdt * effectiveRate).toFixed(2));
+        }
+
+        if (priceInr < 0 || priceUsdt < 0) return [];
+        return [{ minQuantity, maxQuantity, priceInr, priceUsdt }];
+      }).sort((a, b) => a.minQuantity - b.minQuantity);
+    } else {
+      let priceInr = finiteNumber(entry.price_inr ?? entry.priceInr ?? entry.price ?? entry.cost, 0);
+      let priceUsdt = finiteNumber(entry.price_usdt ?? entry.priceUsdt, 0);
+      if (priceUsdt <= 0 && priceInr > 0 && effectiveRate > 0) {
+        priceUsdt = Number((priceInr / effectiveRate).toFixed(4));
+      }
+      if (priceInr <= 0 && priceUsdt > 0 && effectiveRate > 0) {
+        priceInr = Number((priceUsdt * effectiveRate).toFixed(2));
+      }
+      if (priceInr >= 0 && priceUsdt >= 0 && (priceInr > 0 || priceUsdt > 0)) {
+        tiers = [{ minQuantity: 1, maxQuantity: Math.max(1, stock > 0 ? stock : 1_000), priceInr, priceUsdt }];
+      }
+    }
+
+    if (!tiers.length) return [];
+
+    const sanitizedTiers: CouponPricingTier[] = [tiers[0]!];
+    for (let index = 1; index < tiers.length; index += 1) {
+      const currentTier = tiers[index]!;
+      const prevTier = sanitizedTiers[sanitizedTiers.length - 1]!;
+      if (currentTier.minQuantity <= prevTier.maxQuantity) {
+        if (currentTier.maxQuantity > prevTier.maxQuantity) {
+          sanitizedTiers.push({
+            ...currentTier,
+            minQuantity: prevTier.maxQuantity + 1,
+          });
+        }
+      } else {
+        sanitizedTiers.push(currentTier);
+      }
+    }
+
     return [{
-      serviceId: entry.service_id,
-      name: entry.name.slice(0, 255),
+      serviceId,
+      name: name.slice(0, 255),
       stock,
-      rateInrPerUsdt: rate > 0 ? rate : 0,
-      tiers,
+      rateInrPerUsdt: effectiveRate > 0 ? effectiveRate : 0,
+      tiers: sanitizedTiers,
     }];
   });
 }

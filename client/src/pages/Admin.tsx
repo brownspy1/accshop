@@ -155,7 +155,8 @@ function ServicesSection() {
 
   const syncProvider = (provider: "acczone" | "couponshops") => sync.mutate({ provider });
 
-  const inStockCount = data.filter(item => (item.stock - (item.reservedStock || 0)) > 0).length;
+  const scopedData = data.filter(item => providerFilter === "all" || item.provider === providerFilter);
+  const inStockCount = scopedData.filter(item => (item.stock - (item.reservedStock || 0)) > 0).length;
 
   const shown = data.filter(item => {
     const matchesSearch = `${item.name} ${item.serviceKey}`.toLowerCase().includes(search.toLowerCase());
@@ -283,7 +284,12 @@ function ServicesSection() {
       </div>
 
       <div className="toolbar-stats">
-        <b>{shown.length}</b>টি সার্ভিস দেখানো হচ্ছে <small>(স্টকে আছে: {inStockCount}টি / মোট: {data.length}টি)</small>
+        <b>{shown.length}</b>টি সার্ভিস দেখানো হচ্ছে <small>(স্টকে আছে: {inStockCount}টি / {providerFilter === "all" ? "মোট" : providerFilter === "couponshops" ? "CouponShops মোট" : "AccZone মোট"}: {scopedData.length}টি)</small>
+        {stockOnly && (scopedData.length - inStockCount) > 0 && (
+          <span className="stock-hidden-hint" style={{ marginLeft: "6px", color: "#b47818", fontSize: "11px", fontWeight: 500 }}>
+            ({scopedData.length - inStockCount}টি আউট-অফ-স্টক লুকানো — দেখতে ফিল্টার OFF করুন)
+          </span>
+        )}
       </div>
     </div>
 
