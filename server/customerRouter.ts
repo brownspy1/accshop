@@ -20,42 +20,210 @@ function allow(key: string, maximum: number, intervalMs: number) {
   current.count += 1;
   return true;
 }
-function normalizeCodes(raw: string | null, quantity: number): string[] {
+function normalizeCodes(raw: string | null, _quantity?: number): string[] {
   try {
     const value: unknown = raw ? JSON.parse(raw) : [];
-    if (!Array.isArray(value)) return [];
-    const codes = value.map(entry => {
+    if (!Array.isArray(value)) {
+      if (typeof value === "string" && value.trim()) return [value.trim()];
+      return [];
+    }
+    return value.map(entry => {
       if (typeof entry === "string") return entry.trim();
-      if (entry && typeof entry === "object" && "codeValue" in entry && typeof (entry as { codeValue?: unknown }).codeValue === "string") return (entry as { codeValue: string }).codeValue.trim();
-      return "";
+      if (entry && typeof entry === "object") {
+        const obj = entry as Record<string, unknown>;
+        if (typeof obj.codeValue === "string") return obj.codeValue.trim();
+        if (typeof obj.code === "string") return obj.code.trim();
+        if (typeof obj.value === "string") return obj.value.trim();
+        if (typeof obj.secret === "string") return obj.secret.trim();
+        return JSON.stringify(obj);
+      }
+      return String(entry ?? "").trim();
     }).filter(Boolean);
-    return codes.length === quantity && new Set(codes).size === codes.length ? codes : [];
-  } catch { return []; }
+  } catch {
+    return raw?.trim() ? [raw.trim()] : [];
+  }
 }
 
 export const customerAccountRouter = router({
-  requestLink: sameOriginProcedure.input(z.object({ email: z.string().trim().email().max(320) })).mutation(async ({ input, ctx }) => {
+  loginDirect: sameOriginProcedure.input(z.object({
+    email: z.string().trim().email().max(320),
+    phoneOrOrder: z.string().trim().min(3).max(64),
+  })).mutation(async ({ input, ctx }) => {
     const db = await getDb();
     if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database is not available." });
-    const email = input.email.toLowerCase();
+
+    const email = input.email.trim().toLowerCase();
+    const secret = input.phoneOrOrder.trim();
+
     const rateKey = `${ctx.req.ip || "unknown"}:${createHash("sha256").update(email).digest("hex")}`;
-    if (!allow(rateKey, 3, 10 * 60_000) || !allow(`ip:${ctx.req.ip || "unknown"}`, 12, 10 * 60_000)) {
+    if (!allow(rateKey, 6, 10 * 60_000) || !allow(`ip:${ctx.req.ip || "unknown"}`, 25, 10 * 60_000)) {
+      throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: "অনেকবার চেষ্টা করা হয়েছে। কিছুক্ষণ পরে আবার চেষ্টা করুন।" });
+    }
+
+    let [account] = await db.select().from(customerAccounts).where(eq(customerAccounts.email, email)).limit(1);
+    const customerOrders = await db.select().from(orders).where(eq(orders.customerEmail, email));
+
+    if (!customerOrders.length && !account) {
+      throw new TRPCError({ code: "NOT_FOUND", message: "এই Email ঠিকানায় কোনো অর্ডার বা অ্যাকাউন্ট পাওয়া যায়নি।" });
+    }
+
+    let matched = false;
+    const accountPhone = (account?.phone || "").trim();
+    if (accountPhone && (accountPhone === secret || accountPhone.endsWith(secret) || secret.endsWith(accountPhone))) {
+      matched = true;
+    }
+    for (const ord of customerOrders) {
+      const ordPhone = (ord.customerPhone || "").trim();
+      const ordNo = (ord.orderNo || "").trim().toUpperCase();
+      if (ordPhone && (ordPhone === secret || ordPhone.endsWith(secret) || secret.endsWith(ordPhone))) {
+        matched = true;
+        break;
+      }
+      if (ordNo && (ordNo === secret.toUpperCase() || ordNo.endsWith(secret.toUpperCase()))) {
+        matched = true;
+        break;
+      }
+    }
+
+    if (!matched) {
+      throw new TRPCError({
+        code: "UNAUTHORIZED",
+        message: "প্রদত্ত Phone নম্বর বা Order code-এর সাথে অ্যাকাউন্টের তথ্যের মিল নেই।",
+      });
+    }
+
+    if (!account) {
+      const [newAcc] = await db.insert(customerAccounts).values({
+        name: customerOrders[0]?.customerName || email.split("@")[0] || "Customer",
+        email,
+        phone: customerOrders[0]?.customerPhone || secret,
+        emailVerifiedAt: new Date(),
+      }).returning();
+      account = newAcc;
+    } else if (!account.emailVerifiedAt) {
+      await db.update(customerAccounts).set({ emailVerifiedAt: new Date(), updatedAt: new Date() }).where(eq(customerAccounts.id, account.id));
+    }
+
+    await db.update(orders).set({ customerAccountId: account.id, updatedAt: new Date() }).where(eq(orders.customerEmail, email));
+
+    const originHeader = ctx.req.headers.origin;
+    setCustomerSessionCookie(ctx.res, account.id, Array.isArray(originHeader) ? originHeader[0] : originHeader);
+
+    return { success: true, email: account.email } as const;
+  }),
+
+  requestLink: sameOriginProcedure.input(z.object({
+    email: z.string().trim().email().max(320),
+    phoneOrOrder: z.string().trim().max(64).optional(),
+  })).mutation(async ({ input, ctx }) => {
+    const db = await getDb();
+    if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database is not available." });
+    const email = input.email.toLowerCase().trim();
+    const rateKey = `${ctx.req.ip || "unknown"}:${createHash("sha256").update(email).digest("hex")}`;
+    if (!allow(rateKey, 6, 10 * 60_000) || !allow(`ip:${ctx.req.ip || "unknown"}`, 25, 10 * 60_000)) {
       throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: "অনেকবার link চাওয়া হয়েছে। কিছুক্ষণ পরে আবার চেষ্টা করুন।" });
     }
+
+    const secret = input.phoneOrOrder?.trim();
+    if (secret) {
+      let [account] = await db.select().from(customerAccounts).where(eq(customerAccounts.email, email)).limit(1);
+      const customerOrders = await db.select().from(orders).where(eq(orders.customerEmail, email));
+
+      let matched = false;
+      const accountPhone = (account?.phone || "").trim();
+      if (accountPhone && (accountPhone === secret || accountPhone.endsWith(secret) || secret.endsWith(accountPhone))) {
+        matched = true;
+      }
+      for (const ord of customerOrders) {
+        const ordPhone = (ord.customerPhone || "").trim();
+        const ordNo = (ord.orderNo || "").trim().toUpperCase();
+        if (ordPhone && (ordPhone === secret || ordPhone.endsWith(secret) || secret.endsWith(ordPhone))) {
+          matched = true;
+          break;
+        }
+        if (ordNo && (ordNo === secret.toUpperCase() || ordNo.endsWith(secret.toUpperCase()))) {
+          matched = true;
+          break;
+        }
+      }
+
+      if (matched) {
+        if (!account) {
+          const [newAcc] = await db.insert(customerAccounts).values({
+            name: customerOrders[0]?.customerName || email.split("@")[0] || "Customer",
+            email,
+            phone: customerOrders[0]?.customerPhone || secret,
+            emailVerifiedAt: new Date(),
+          }).returning();
+          account = newAcc;
+        } else if (!account.emailVerifiedAt) {
+          await db.update(customerAccounts).set({ emailVerifiedAt: new Date(), updatedAt: new Date() }).where(eq(customerAccounts.id, account.id));
+        }
+        await db.update(orders).set({ customerAccountId: account.id, updatedAt: new Date() }).where(eq(orders.customerEmail, email));
+        const originHeader = ctx.req.headers.origin;
+        setCustomerSessionCookie(ctx.res, account.id, Array.isArray(originHeader) ? originHeader[0] : originHeader);
+        return {
+          success: true,
+          verified: true,
+          directUrl: null as string | null,
+          message: "অ্যাকাউন্টে সরাসরি প্রবেশ করা হয়েছে।",
+        } as const;
+      }
+    }
+
     try {
+      let generatedToken: string | null = null;
       const result = await db.transaction(async tx => {
-        const [account] = await tx.select().from(customerAccounts).where(eq(customerAccounts.email, email)).for("update");
+        let [account] = await tx.select().from(customerAccounts).where(eq(customerAccounts.email, email)).for("update");
+        if (!account) {
+          const [matchingOrder] = await tx.select().from(orders).where(eq(orders.customerEmail, email)).limit(1);
+          if (matchingOrder) {
+            const [newAcc] = await tx.insert(customerAccounts).values({
+              name: matchingOrder.customerName || email.split("@")[0] || "Customer",
+              email,
+              phone: matchingOrder.customerPhone || "",
+            }).returning();
+            account = newAcc;
+          }
+        }
         if (!account) return null;
         const token = newMagicToken();
         const purpose = account.emailVerifiedAt ? "login" as const : "verify" as const;
         await tx.update(customerAccounts).set({ magicTokenHash: token.hash, magicTokenExpiresAt: token.expiresAt, magicTokenPurpose: purpose, updatedAt: new Date() }).where(eq(customerAccounts.id, account.id));
         return { id: account.id, token: token.token, purpose };
       });
-      if (result) await sendCustomerMagicLink(result.id, result.token, result.purpose);
+
+      if (result) {
+        generatedToken = result.token;
+        const mailResult = await sendCustomerMagicLink(result.id, result.token, result.purpose);
+        if (mailResult === "sent") {
+          return {
+            success: true,
+            verified: false,
+            directUrl: null as string | null,
+            message: "আপনার ইমেইলে sign-in link পাঠানো হয়েছে। Link ১০ মিনিট কার্যকর থাকবে।",
+          } as const;
+        }
+      }
+
+      if (generatedToken) {
+        return {
+          success: true,
+          verified: false,
+          directUrl: `/account/verify#token=${generatedToken}`,
+          message: "কাস্টম ডোমেইন ছাড়া সরাসরি প্রবেশের লিঙ্ক তৈরি হয়েছে। নিচের বাটনে ক্লিক করে অ্যাকাউন্টে প্রবেশ করুন।",
+        } as const;
+      }
     } catch {
-      // Always return the same response so account existence is not disclosed.
+      // Always return gracefully
     }
-    return { success: true, message: "যদি এই email-এ store account থাকে এবং email service configured থাকে, sign-in link পাঠানো হবে। Link ১০ মিনিট কার্যকর থাকবে।" } as const;
+
+    return {
+      success: true,
+      verified: false,
+      directUrl: null as string | null,
+      message: "যদি এই email-এ অর্ডার থাকে, অ্যাকাউন্ট লিঙ্ক প্রস্তুত করা হবে।",
+    } as const;
   }),
 
   verifyLink: sameOriginProcedure.input(z.object({ token: z.string().min(24).max(128) })).mutation(async ({ input, ctx }) => {
