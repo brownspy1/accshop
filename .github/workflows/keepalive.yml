@@ -1,0 +1,54 @@
+name: Keep Render Service Awake 24/7
+
+on:
+  schedule:
+    # Run every 10 minutes, 24 hours a day, 7 days a week (UTC)
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+    inputs:
+      target_url:
+        description: 'Target health endpoint URL'
+        required: false
+        default: 'https://accshop-767l.onrender.com/api/health'
+
+concurrency:
+  group: keepalive-cron
+  cancel-in-progress: true
+
+jobs:
+  keepalive:
+    name: Ping Render Web Service
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Ping Service Health Endpoint
+        env:
+          DEFAULT_URL: 'https://accshop-767l.onrender.com/api/health'
+          INPUT_URL: ${{ github.event.inputs.target_url }}
+        run: |
+          TARGET_URL="${INPUT_URL:-$DEFAULT_URL}"
+          echo "=========================================="
+          echo "Keep-Alive Ping triggered at: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+          echo "Target URL: $TARGET_URL"
+          echo "=========================================="
+          
+          # Ping the health check endpoint with retries and timing info
+          HTTP_RESPONSE=$(curl -sS -L \
+            --connect-timeout 20 \
+            --max-time 45 \
+            --retry 3 \
+            --retry-delay 5 \
+            -w "\nHTTP_STATUS:%{http_code}\nTIME_TOTAL:%{time_total}s\n" \
+            -H "User-Agent: AccShop-KeepAlive-Action/1.0" \
+            "$TARGET_URL")
+          
+          echo "Response Details:"
+          echo "$HTTP_RESPONSE"
+          
+          if echo "$HTTP_RESPONSE" | grep -q "HTTP_STATUS:200"; then
+            echo "SUCCESS: Render web service is active and responsive (HTTP 200 OK)."
+          else
+            echo "WARNING: Unexpected status received. Inspect output above."
+            exit 1
+          fi
