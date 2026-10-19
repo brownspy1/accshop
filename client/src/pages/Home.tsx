@@ -8,13 +8,11 @@ import {
   ArrowDown,
   ArrowRight,
   ArrowUpRight,
-  Check,
   CheckCircle2,
   Clock3,
   CreditCard,
   Info,
   LockKeyhole,
-  Mail,
   PackageCheck,
   Search,
   ShieldCheck,
@@ -76,8 +74,6 @@ export default function Home() {
   }, [products, activeCategory, search]);
 
   const freshStockCount = products.filter(item => item.stockFresh).length;
-  const inStockProducts = products.filter(item => item.stock > 0);
-  const featuredProduct = inStockProducts.find(p => /gemini|chatgpt/i.test(p.name)) ?? inStockProducts[0];
 
   return (
     <div className="shop-page">
@@ -102,99 +98,76 @@ export default function Home() {
 
             <div className="hero-actions">
               <a className="button button-primary" href="#services">
-                সার্ভিসসমূহ ব্রাউজ করুন <ArrowDown size={16} />
+                সার্ভিসসমূহ দেখুন ও কিনুন <ArrowDown size={16} />
               </a>
               <Link className="button button-secondary" href="/track">
                 অর্ডার ট্র্যাক করুন <ArrowUpRight size={15} />
               </Link>
             </div>
 
-            <div className="hero-trust-badges">
-              <div className="trust-badge">
-                <CheckCircle2 size={16} /> <span>bKash ও Nagad পেমেন্ট</span>
+            <div className="hero-badges">
+              <div className="hero-badge-pill">
+                <CheckCircle2 size={15} /> <span>bKash ও Nagad পেমেন্ট</span>
               </div>
-              <div className="trust-badge">
-                <Zap size={16} /> <span>দ্রুত অ্যাক্টিভেশন</span>
+              <div className="hero-badge-pill">
+                <Zap size={15} /> <span>দ্রুত অ্যাক্টিভেশন</span>
               </div>
-              <div className="trust-badge">
-                <Mail size={16} /> <span>ইমেইলে সরাসরি ডেলিভারি</span>
+              <div className="hero-badge-pill">
+                <ShieldCheck size={15} /> <span>১০০% নিরাপদ ডেলিভারি</span>
               </div>
             </div>
           </div>
 
-          {/* HERO VISUAL / INTERACTIVE SPOTLIGHT */}
-          <div className="hero-showcase">
-            <div className="showcase-card">
-              <div className="showcase-header">
-                <div className="showcase-badge">
-                  <span className="live-dot" /> জনপ্রিয় সার্ভিস
+          {/* HERO RIGHT: SIMPLE 3-STEP ORDER GUIDE & LIVE STATUS */}
+          <div className="hero-guide-container">
+            <div className="hero-guide-card">
+              <div className="hero-guide-header">
+                <div className="guide-header-title">
+                  <Sparkles size={16} />
+                  <span>কীভাবে সহজে অর্ডার করবেন?</span>
                 </div>
-                <span className="showcase-status">
-                  <PackageCheck size={14} /> {freshStockCount}টি সার্ভিস লাইভ স্টকে
+                <span className="guide-status-pill">
+                  <span className="live-dot" /> {freshStockCount ? `${freshStockCount}টি সার্ভিস লাইভ স্টকে` : "লাইভ স্টক উপলব্ধ"}
                 </span>
               </div>
 
-              {featuredProduct ? (
-                <div
-                  className="showcase-product-preview"
-                  onClick={() => setSelectedProduct(featuredProduct)}
-                  role="button"
-                  tabIndex={0}
-                >
-                  <div className="showcase-product-icon">
-                    {featuredProduct.imageUrl ? (
-                      <img src={featuredProduct.imageUrl} alt="" loading="lazy" />
-                    ) : (
-                      <span>{shortLabel(featuredProduct.serviceKey)}</span>
-                    )}
-                  </div>
-                  <div className="showcase-product-details">
-                    <span className="showcase-cat">{categoryFor(featuredProduct.serviceKey, featuredProduct.name)}</span>
-                    <h4>{featuredProduct.name}</h4>
-                    <p>{featuredProduct.description?.slice(0, 80) || "লাইভ স্টক থেকে সরাসরি ডেলিভারি।"}</p>
-                  </div>
-                  <div className="showcase-product-action">
-                    <span className="showcase-price">{formatMoney(featuredProduct.retailPrice, store?.currency ?? "BDT")}</span>
-                    <button
-                      type="button"
-                      className="button button-primary button-sm"
-                      onClick={e => {
-                        e.stopPropagation();
-                        add(featuredProduct.serviceKey, featuredProduct.quantityTiers?.[0]?.minQuantity ?? 1, featuredProduct.maxAllowedQuantity);
-                      }}
-                    >
-                      <ShoppingBag size={13} /> কার্টে নিন
-                    </button>
+              <div className="hero-guide-steps">
+                <div className="guide-step-item">
+                  <div className="guide-step-badge">১</div>
+                  <div className="guide-step-body">
+                    <strong>সার্ভিস ও প্যাকেজ বেছে নিন</strong>
+                    <p>Gemini, ChatGPT, Spotify বা আপনার পছন্দের ডিজিটাল সার্ভিস কার্টে যোগ করুন।</p>
                   </div>
                 </div>
-              ) : (
-                <div className="showcase-loading">
-                  <Sparkles size={24} />
-                  <span>ক্যাটালগ সিঙ্ক সম্পন্ন হচ্ছে…</span>
-                </div>
-              )}
 
-              <div className="showcase-features">
-                <div className="feat-item">
-                  <Clock3 size={15} />
-                  <div>
-                    <b>পেমেন্ট ভেরিফিকেশন</b>
-                    <small>অ্যাডমিন ম্যানুয়ালি নিশ্চিত করেন</small>
+                <div className="guide-step-item">
+                  <div className="guide-step-badge">২</div>
+                  <div className="guide-step-body">
+                    <strong>bKash বা Nagad-এ পেমেন্ট করুন</strong>
+                    <p>অ্যাডমিনের দেওয়া নাম্বারে সেন্ড মানি করে TrxID দিয়ে অর্ডার কনফার্ম করুন।</p>
                   </div>
                 </div>
-                <div className="feat-item">
-                  <ShieldCheck size={15} />
-                  <div>
-                    <b>সুরক্ষিত লেনদেন</b>
-                    <small>TrxID বা রেফারেন্স দিয়ে যাচাই</small>
+
+                <div className="guide-step-item">
+                  <div className="guide-step-badge">৩</div>
+                  <div className="guide-step-body">
+                    <strong>অ্যাক্টিভেশন ও কোড বুঝে নিন</strong>
+                    <p>পেমেন্ট নিশ্চিত হলেই সরাসরি আপনার ইমেইল ও ওয়েবসাইটে ডেলিভারি কোড পৌঁছে যাবে।</p>
                   </div>
                 </div>
               </div>
-            </div>
 
-            <div className="float-pill-banner">
-              <LockKeyhole size={15} />
-              <span>কোনো পাসওয়ার্ড বা কার্ড লাগবে না · ট্র্যাকিং কোড দিয়ে স্ট্যাটাস দেখুন</span>
+              <div className="hero-guide-footer">
+                <div className="guide-trust-pill">
+                  <ShieldCheck size={14} /> <span>১০০% ফুল ওয়ারেন্টি</span>
+                </div>
+                <div className="guide-trust-pill">
+                  <LockKeyhole size={14} /> <span>কোনো কার্ড লাগবে না</span>
+                </div>
+                <div className="guide-trust-pill">
+                  <Clock3 size={14} /> <span>২৪/৭ লাইভ ট্র্যাকিং</span>
+                </div>
+              </div>
             </div>
           </div>
         </section>

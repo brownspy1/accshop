@@ -612,51 +612,41 @@ function SettingsSection() {
         <div className="panel-top">
           <div>
             <h2>Gmail Direct Mailer (ডোমেইন ছাড়া সরাসরি জিমেইল থেকে ইমেইল পাঠান)</h2>
-            <p>আপনার ব্যক্তিগত বা বিজনেস Gmail অ্যাকাউন্ট দিয়ে সরাসরি কাস্টমারদের কাছে অ্যাকাউন্ট অ্যাক্টিভেশন লিঙ্ক ও ডেলিভারি কোড পাঠান। কোনো ডোমেইন DNS ভেরিফিকেশনের প্রয়োজন নেই!</p>
+            <p>আপনার ব্যক্তিগত বা বিজনেস Gmail দিয়ে গ্রাহকের কাছে অর্ডার কনফার্মেশন ও ডেলিভারি লিঙ্ক পাঠান।</p>
           </div>
           <Mail size={19} />
         </div>
 
-        <div className="email-provider-state" style={{ marginBottom: "16px" }}>
+        <div className="email-provider-state" style={{ marginBottom: "14px" }}>
           <span className={`status-chip ${emailConfig.data?.gmail?.configured ? "status-fulfilled" : "status-awaiting_payment"}`}>
             <i />{emailConfig.isLoading ? "Checking…" : emailConfig.data?.gmail?.configured ? "GMAIL ACTIVE & CONNECTED" : "GMAIL NOT CONFIGURED"}
           </span>
           {emailConfig.data?.gmail?.configured && emailConfig.data.gmail.user && (
-            <span style={{ fontSize: "13px", color: "#08785f", fontWeight: 600 }}>
+            <span style={{ fontSize: "12px", color: "var(--mint-deep, #08785f)", fontWeight: 650 }}>
               সংযুক্ত Gmail: {emailConfig.data.gmail.user} {emailConfig.data.gmail.mode === "webhook" ? "(via Apps Script Webhook)" : "(via Direct SMTP)"}
             </span>
           )}
         </div>
 
-        {/* Method selector tabs */}
-        <div style={{ display: "flex", gap: "8px", marginBottom: "16px", flexWrap: "wrap" }}>
+        <div className="filter-pills" style={{ marginBottom: "14px" }}>
           <button
             type="button"
-            className={`button ${gmailMode === "webhook" ? "button-primary" : "button-light"}`}
-            style={{ fontSize: "13px", padding: "8px 14px" }}
+            className={`filter-pill ${gmailMode === "webhook" ? "active" : ""}`}
             onClick={() => setGmailMode("webhook")}
           >
-            ⚡ পদ্ধতি ১: Google Apps Script Webhook (Render Free-এর জন্য সুপারিশকৃত - ১০০% ফ্রি)
+            ⚡ পদ্ধতি ১: Google Apps Script Webhook (Render Free-এর জন্য সুপারিশকৃত)
           </button>
           <button
             type="button"
-            className={`button ${gmailMode === "smtp" ? "button-primary" : "button-light"}`}
-            style={{ fontSize: "13px", padding: "8px 14px" }}
+            className={`filter-pill ${gmailMode === "smtp" ? "active" : ""}`}
             onClick={() => setGmailMode("smtp")}
           >
-            🔑 পদ্ধতি ২: Google App Password (SMTP - Paid Render বা নিজস্ব VPS)
+            🔑 পদ্ধতি ২: Google App Password (SMTP)
           </button>
         </div>
 
         {gmailMode === "webhook" ? (
           <div>
-            <div className="notice" style={{ marginBottom: "14px", background: "#f0fdf4", border: "1px solid #bbf7d0", color: "#166534" }}>
-              <Zap size={16} />
-              <span>
-                <strong>Render Free ব্যবহারকারীদের জন্য:</strong> Render.com তাদের ফ্রি প্ল্যানে আউটবাউন্ড SMTP পোর্ট (465 ও 587) ব্লক করে রাখে। এই Google Apps Script Webhook পদ্ধতিটি স্ট্যান্ডার্ড HTTPS পোর্ট (443) দিয়ে সরাসরি আপনার Gmail থেকে কাস্টমারকে ইমেইল পাঠায়—কোনো পোর্ট ব্লকের ঝামেলা নেই!
-              </span>
-            </div>
-
             <div className="settings-grid">
               <label className="field">
                 আপনার Gmail ঠিকানা
@@ -679,7 +669,7 @@ function SettingsSection() {
               </label>
 
               <label className="field full-field">
-                প্রেরক প্রদর্শিত নাম (Store / Sender Display Name)
+                প্রেরক প্রদর্শিত নাম (Store / Sender Name)
                 <input
                   type="text"
                   value={gmailFromName}
@@ -697,60 +687,42 @@ function SettingsSection() {
                 disabled={!gmailUser.trim() || !gmailWebhookUrl.trim() || configureGmail.isPending}
               >
                 {configureGmail.isPending ? <LoaderCircle className="spin" size={14} /> : <ShieldCheck size={14} />}
-                Webhook টেস্ট ও সংরক্ষণ করুন
+                Webhook সংরক্ষণ ও টেস্ট করুন
+              </button>
+              <button
+                type="button"
+                className="button button-light"
+                onClick={() => {
+                  navigator.clipboard.writeText(APPS_SCRIPT_CODE);
+                  setCopiedCode(true);
+                  setTimeout(() => setCopiedCode(false), 2000);
+                }}
+              >
+                {copiedCode ? <Check size={14} /> : <FileText size={14} />}
+                {copiedCode ? "কোড কপি হয়েছে!" : "Apps Script কোড কপি করুন"}
               </button>
               <button
                 type="button"
                 className="button button-light"
                 onClick={() => setShowWebhookGuide(!showWebhookGuide)}
               >
-                📖 ১ মিনিটের সেটআপ গাইড ও কোড দেখুন
+                {showWebhookGuide ? "সহায়তা লুকান" : "১ মিনিটের সেটআপ গাইড"}
               </button>
             </div>
 
             {showWebhookGuide && (
-              <div className="notice" style={{ marginTop: "14px", background: "#f8fafc", border: "1px solid #cbd5e1", color: "#1e293b", padding: "16px", borderRadius: "10px", fontSize: "13px", lineHeight: "1.7" }}>
-                <strong>Google Apps Script Webhook সেটআপ করার ৫টি সহজ ধাপ:</strong>
-                <ol style={{ margin: "8px 0 12px 18px", padding: 0 }}>
-                  <li>আপনার ব্রাউজারে <a href="https://script.google.com" target="_blank" rel="noreferrer" style={{ color: "#059669", textDecoration: "underline", fontWeight: 600 }}>script.google.com</a>-এ যান এবং <strong>'New project'</strong>-এ ক্লিক করুন।</li>
-                  <li>এডিটরে থাকা কোড মুছে নিচের কোডটুকু পেস্ট করুন:</li>
-                </ol>
-
-                <div style={{ position: "relative", marginBottom: "12px" }}>
-                  <pre style={{ background: "#0f172a", color: "#f8fafc", padding: "14px", borderRadius: "8px", overflowX: "auto", fontSize: "12px", margin: 0, fontFamily: "monospace" }}>
-                    {APPS_SCRIPT_CODE}
-                  </pre>
-                  <button
-                    type="button"
-                    className="button button-light button-sm"
-                    style={{ position: "absolute", top: "8px", right: "8px", fontSize: "11px", padding: "4px 8px" }}
-                    onClick={() => {
-                      navigator.clipboard.writeText(APPS_SCRIPT_CODE);
-                      setCopiedCode(true);
-                      setTimeout(() => setCopiedCode(false), 2000);
-                    }}
-                  >
-                    {copiedCode ? "✓ কপি হয়েছে!" : "কোড কপি করুন"}
-                  </button>
-                </div>
-
-                <ol start={3} style={{ margin: "0 0 0 18px", padding: 0 }}>
-                  <li>উপরের ডানপাশে <strong>Deploy</strong> বাটনে ক্লিক করে <strong>'New deployment'</strong> নির্বাচন করুন।</li>
-                  <li>বামপাশের গিয়ার আইকনে ক্লিক করে <strong>'Web app'</strong> সিলেক্ট করুন। <strong>'Execute as'</strong>-এ 'Me' এবং <strong>'Who has access'</strong>-এ অবশ্যই <strong>'Anyone'</strong> দিন। এরপর <strong>Deploy</strong> চাপুন।</li>
-                  <li>দেওয়া <strong>Web app URL</strong> (যা <code>/exec</code> দিয়ে শেষ হয়) কপি করে ওপরের বক্সে পেস্ট করে <strong>"Webhook টেস্ট ও সংরক্ষণ করুন"</strong> দিন!</li>
+              <div className="notice" style={{ marginTop: "14px", background: "#f8faf9", border: "1px solid #dce8e1", color: "#223d34", padding: "14px", borderRadius: "8px", fontSize: "12px", lineHeight: "1.7" }}>
+                <strong>Google Apps Script Webhook সেটআপ করার সহজ ৩টি ধাপ:</strong>
+                <ol style={{ margin: "6px 0 0 16px", padding: 0 }}>
+                  <li><a href="https://script.google.com" target="_blank" rel="noreferrer" style={{ color: "#08785f", textDecoration: "underline", fontWeight: 600 }}>script.google.com</a>-এ যান, <strong>'New project'</strong> খুলুন এবং ওপরের <strong>'Apps Script কোড কপি করুন'</strong> বাটনে ক্লিক করে পাওয়া কোডটুকু পেস্ট করুন।</li>
+                  <li>উপরে <strong>Deploy &gt; New deployment</strong> চাপুন। গিয়ার আইকন থেকে <strong>Web app</strong> সিলেক্ট করে Execute as: <strong>Me</strong> এবং Who has access: <strong>Anyone</strong> দিয়ে Deploy করুন।</li>
+                  <li>দেওয়া <strong>Web app URL</strong> (যা <code>/exec</code> দিয়ে শেষ হয়) কপি করে ওপরের বক্সে পেস্ট করে <strong>"Webhook সংরক্ষণ ও টেস্ট করুন"</strong> দিন!</li>
                 </ol>
               </div>
             )}
           </div>
         ) : (
           <div>
-            <div className="notice warning" style={{ marginBottom: "14px" }}>
-              <AlertTriangle size={16} />
-              <span>
-                <strong>সতর্কতা:</strong> Render.com তাদের Free হোস্টিংয়ে সরাসরি SMTP পোর্ট (465/587) ব্লক করে রাখে। আপনার Render যদি Free প্ল্যানে থাকে, তবে <code>Connection timeout</code> এরর আসবে। Free প্ল্যানের জন্য পদ্ধতি ১ (Google Apps Script Webhook) ব্যবহার করুন অথবা Render-কে $7 Starter প্ল্যানে আপগ্রেড করুন।
-              </span>
-            </div>
-
             <div className="settings-grid">
               <label className="field">
                 আপনার Gmail ঠিকানা
@@ -761,8 +733,9 @@ function SettingsSection() {
                   placeholder="yourshop@gmail.com"
                 />
               </label>
+
               <label className="field">
-                Google App Password (১৬ অক্ষরের পাসওয়ার্ড)
+                Google App Password (১৬ অক্ষর)
                 <input
                   type="password"
                   value={gmailAppPass}
@@ -770,8 +743,9 @@ function SettingsSection() {
                   placeholder="abcd efgh ijkl mnop"
                 />
               </label>
+
               <label className="field full-field">
-                প্রেরক প্রদর্শিত নাম (Store / Sender Display Name)
+                প্রেরক প্রদর্শিত নাম (Store / Sender Name)
                 <input
                   type="text"
                   value={gmailFromName}
@@ -789,26 +763,24 @@ function SettingsSection() {
                 disabled={!gmailUser.trim() || !gmailAppPass.trim() || configureGmail.isPending}
               >
                 {configureGmail.isPending ? <LoaderCircle className="spin" size={14} /> : <ShieldCheck size={14} />}
-                Gmail টেস্ট ও সংরক্ষণ করুন
+                Gmail সংরক্ষণ ও টেস্ট করুন
               </button>
               <button
                 type="button"
                 className="button button-light"
                 onClick={() => setShowGmailHelp(!showGmailHelp)}
               >
-                💡 কীভাবে Google App Password পাবেন?
+                {showGmailHelp ? "সহায়তা লুকান" : "কীভাবে App Password পাবেন?"}
               </button>
             </div>
 
             {showGmailHelp && (
-              <div className="notice" style={{ marginTop: "14px", background: "#f0f7f4", border: "1px solid #cce8dc", color: "#164e3f", padding: "16px", borderRadius: "10px", fontSize: "13px", lineHeight: "1.7" }}>
-                <strong>Google App Password পাওয়ার সহজ ৫টি ধাপ:</strong>
-                <ol style={{ margin: "8px 0 0 18px", padding: 0 }}>
-                  <li>আপনার ব্রাউজারে <a href="https://myaccount.google.com/security" target="_blank" rel="noreferrer" style={{ color: "#08785f", textDecoration: "underline", fontWeight: 600 }}>myaccount.google.com/security</a>-তে যান।</li>
-                  <li><strong>'2-Step Verification'</strong> অপশনটি চালু আছে কিনা নিশ্চিত করুন (না থাকলে চালু করুন)।</li>
-                  <li>সার্চ বারে <strong>'App passwords'</strong> লিখে সার্চ করুন (অথবা 2-Step Verification-এর নিচে 'App passwords'-এ ক্লিক করুন)।</li>
-                  <li>App name হিসেবে <code>AccShop</code> লিখে <strong>'Create'</strong> চাপুন।</li>
-                  <li>একটি ১৬ অক্ষরের পাসওয়ার্ড (যেমন: <code>abcd efgh ijkl mnop</code>) পাবেন। সেটি কপি করে উপরের বক্সে পেস্ট করে <strong>"Gmail টেস্ট ও সংরক্ষণ করুন"</strong> বাটনে ক্লিক করুন।</li>
+              <div className="notice" style={{ marginTop: "14px", background: "#f8faf9", border: "1px solid #dce8e1", color: "#223d34", padding: "14px", borderRadius: "8px", fontSize: "12px", lineHeight: "1.7" }}>
+                <strong>Google App Password পাওয়ার সহজ ৩টি ধাপ:</strong>
+                <ol style={{ margin: "6px 0 0 16px", padding: 0 }}>
+                  <li><a href="https://myaccount.google.com/security" target="_blank" rel="noreferrer" style={{ color: "#08785f", textDecoration: "underline", fontWeight: 600 }}>Google Security</a>-তে গিয়ে 2-Step Verification চালু করুন।</li>
+                  <li>Security পেজে <strong>'App passwords'</strong> সার্চ করুন এবং অ্যাপ নাম <code>AccShop</code> দিয়ে Create চাপুন।</li>
+                  <li>পাওয়া ১৬ অক্ষরের কোডটি কপি করে ওপরের বক্সে পেস্ট করে সেভ করুন।</li>
                 </ol>
               </div>
             )}
@@ -816,10 +788,10 @@ function SettingsSection() {
         )}
 
         {emailConfig.data?.gmail?.configured && (
-          <div style={{ marginTop: "18px", paddingTop: "14px", borderTop: "1px solid var(--line, #e8eeeb)" }}>
-            <label className="field" style={{ maxWidth: "440px" }}>
+          <div style={{ marginTop: "16px", paddingTop: "14px", borderTop: "1px solid var(--line, #e8eeeb)" }}>
+            <label className="field" style={{ maxWidth: "420px" }}>
               টেস্ট ইমেইল পাঠান (Send Test Mail)
-              <div style={{ display: "flex", gap: "8px", marginTop: "4px" }}>
+              <div style={{ display: "flex", gap: "8px", marginTop: "5px" }}>
                 <input
                   type="email"
                   value={testEmailTarget}
