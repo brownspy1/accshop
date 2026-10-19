@@ -46,11 +46,36 @@ describe("Gmail Mailer service", () => {
       expect(status.configured).toBe(true);
       expect(status.user).toContain("***@gmail.com");
       expect(status.user).not.toBe("mybusiness@gmail.com");
+      expect(status.mode).toBe("smtp");
     } finally {
       if (prevUser) process.env.GMAIL_USER = prevUser;
       else delete process.env.GMAIL_USER;
       if (prevPass) process.env.GMAIL_APP_PASSWORD = prevPass;
       else delete process.env.GMAIL_APP_PASSWORD;
+    }
+  });
+
+  it("detects Google Apps Script webhook mode from environment variables", async () => {
+    const prevUser = process.env.GMAIL_USER;
+    const prevHook = process.env.GMAIL_WEBHOOK_URL;
+
+    process.env.GMAIL_USER = "webhookshop@gmail.com";
+    process.env.GMAIL_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbx123/exec";
+
+    try {
+      const config = await getGmailConfig();
+      expect(config?.mode).toBe("webhook");
+      expect(config?.webhookUrl).toBe("https://script.google.com/macros/s/AKfycbx123/exec");
+      expect(config?.user).toBe("webhookshop@gmail.com");
+
+      const status = await inspectGmailStatus();
+      expect(status.configured).toBe(true);
+      expect(status.mode).toBe("webhook");
+    } finally {
+      if (prevUser) process.env.GMAIL_USER = prevUser;
+      else delete process.env.GMAIL_USER;
+      if (prevHook) process.env.GMAIL_WEBHOOK_URL = prevHook;
+      else delete process.env.GMAIL_WEBHOOK_URL;
     }
   });
 });

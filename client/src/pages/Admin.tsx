@@ -2,7 +2,7 @@ import { BrandMark } from "@/components/StoreHeader";
 import { startLogin } from "@/const";
 import { trpc } from "@/lib/trpc";
 import { formatMoney, orderStatusLabels } from "@/lib/shop";
-import { Activity, AlertTriangle, ArrowDownRight, ArrowLeft, ArrowRight, BadgeCheck, Banknote, Boxes, Check, CheckCircle2, ChevronDown, ChevronRight, CircleDollarSign, ClipboardList, Clock3, CreditCard, ExternalLink, Eye, EyeOff, FileText, ImagePlus, KeyRound, LayoutDashboard, LoaderCircle, LogOut, Mail, PackageCheck, RefreshCw, Save, Search, Settings2, ShieldCheck, ShoppingBag, Store, TrendingUp, Wallet, X } from "lucide-react";
+import { Activity, AlertTriangle, ArrowDownRight, ArrowLeft, ArrowRight, BadgeCheck, Banknote, Boxes, Check, CheckCircle2, ChevronDown, ChevronRight, CircleDollarSign, ClipboardList, Clock3, CreditCard, ExternalLink, Eye, EyeOff, FileText, ImagePlus, KeyRound, LayoutDashboard, LoaderCircle, LogOut, Mail, PackageCheck, RefreshCw, Save, Search, Settings2, ShieldCheck, ShoppingBag, Store, TrendingUp, Wallet, X, Zap } from "lucide-react";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { Link } from "wouter";
 import { toast } from "sonner";
@@ -545,6 +545,28 @@ function HistorySection() {
       <div className="pagination-row"><button className="button button-light" onClick={() => setPage(Math.max(1, page - 1))} disabled={page <= 1 || history.isFetching}><ArrowLeft size={14} /> Previous</button><span>Page {page}</span><button className="button button-light" onClick={() => setPage(page + 1)} disabled={(history.data?.length ?? 0) < 20 || history.isFetching}>Next <ArrowRight size={14} /></button></div></div></>;
 }
 
+const APPS_SCRIPT_CODE = `function doPost(e) {
+  try {
+    var data = JSON.parse(e.postData.contents);
+    if (data.ping) {
+      return ContentService.createTextOutput(JSON.stringify({ success: true, message: "pong" }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+    MailApp.sendEmail({
+      to: data.to,
+      subject: data.subject,
+      htmlBody: data.html || data.text,
+      body: data.text || "",
+      name: data.fromName || "AccZone Shop"
+    });
+    return ContentService.createTextOutput(JSON.stringify({ success: true }))
+      .setMimeType(ContentService.MimeType.JSON);
+  } catch (err) {
+    return ContentService.createTextOutput(JSON.stringify({ success: false, error: err.toString() }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+}`;
+
 function SettingsSection() {
   const utils = trpc.useUtils();
   const { data, isLoading } = trpc.shop.admin.settings.get.useQuery();
@@ -552,9 +574,13 @@ function SettingsSection() {
   const [resendKey, setResendKey] = useState("");
   const [gmailUser, setGmailUser] = useState("");
   const [gmailAppPass, setGmailAppPass] = useState("");
+  const [gmailWebhookUrl, setGmailWebhookUrl] = useState("");
+  const [gmailMode, setGmailMode] = useState<"webhook" | "smtp">("webhook");
   const [gmailFromName, setGmailFromName] = useState("AccZone Shop");
   const [testEmailTarget, setTestEmailTarget] = useState("");
   const [showGmailHelp, setShowGmailHelp] = useState(false);
+  const [showWebhookGuide, setShowWebhookGuide] = useState(false);
+  const [copiedCode, setCopiedCode] = useState(false);
 
   const [form, setForm] = useState({ currency: "BDT" as "BDT" | "USD" | "INR", paymentInstructions: "", bkashNumber: "", nagadNumber: "", bankDetails: "", supportContact: "", inrToStoreRate: 0, usdtToStoreRate: 0, acczoneUnitToStoreRate: 0, resendFromEmail: "", publicSiteUrl: "https://accshop-767l.onrender.com" });
   useEffect(() => { if (data) setForm({ currency: data.currency as "BDT" | "USD" | "INR", paymentInstructions: data.paymentInstructions ?? "", bkashNumber: data.bkashNumber ?? "", nagadNumber: data.nagadNumber ?? "", bankDetails: data.bankDetails ?? "", supportContact: data.supportContact ?? "", inrToStoreRate: Number(data.inrToStoreRate ?? 0), usdtToStoreRate: Number(data.usdtToStoreRate ?? 0), acczoneUnitToStoreRate: Number(data.acczoneUnitToStoreRate ?? 0), resendFromEmail: data.resendFromEmail ?? "", publicSiteUrl: data.publicSiteUrl || "https://accshop-767l.onrender.com" }); }, [data]);
@@ -597,70 +623,195 @@ function SettingsSection() {
           </span>
           {emailConfig.data?.gmail?.configured && emailConfig.data.gmail.user && (
             <span style={{ fontSize: "13px", color: "#08785f", fontWeight: 600 }}>
-              সংযুক্ত Gmail: {emailConfig.data.gmail.user}
+              সংযুক্ত Gmail: {emailConfig.data.gmail.user} {emailConfig.data.gmail.mode === "webhook" ? "(via Apps Script Webhook)" : "(via Direct SMTP)"}
             </span>
           )}
         </div>
 
-        <div className="settings-grid">
-          <label className="field">
-            আপনার Gmail ঠিকানা
-            <input
-              type="email"
-              value={gmailUser}
-              onChange={e => setGmailUser(e.target.value)}
-              placeholder="yourshop@gmail.com"
-            />
-          </label>
-          <label className="field">
-            Google App Password (১৬ অক্ষরের পাসওয়ার্ড)
-            <input
-              type="password"
-              value={gmailAppPass}
-              onChange={e => setGmailAppPass(e.target.value)}
-              placeholder="abcd efgh ijkl mnop"
-            />
-          </label>
-          <label className="field full-field">
-            প্রেরক প্রদর্শিত নাম (Store / Sender Display Name)
-            <input
-              type="text"
-              value={gmailFromName}
-              onChange={e => setGmailFromName(e.target.value)}
-              placeholder="AccZone Shop"
-            />
-          </label>
-        </div>
-
-        <div style={{ display: "flex", gap: "10px", marginTop: "14px", flexWrap: "wrap", alignItems: "center" }}>
+        {/* Method selector tabs */}
+        <div style={{ display: "flex", gap: "8px", marginBottom: "16px", flexWrap: "wrap" }}>
           <button
             type="button"
-            className="button button-primary"
-            onClick={() => configureGmail.mutate({ gmailUser, appPassword: gmailAppPass, fromName: gmailFromName })}
-            disabled={!gmailUser.trim() || !gmailAppPass.trim() || configureGmail.isPending}
+            className={`button ${gmailMode === "webhook" ? "button-primary" : "button-light"}`}
+            style={{ fontSize: "13px", padding: "8px 14px" }}
+            onClick={() => setGmailMode("webhook")}
           >
-            {configureGmail.isPending ? <LoaderCircle className="spin" size={14} /> : <ShieldCheck size={14} />}
-            Gmail টেস্ট ও সংরক্ষণ করুন
+            ⚡ পদ্ধতি ১: Google Apps Script Webhook (Render Free-এর জন্য সুপারিশকৃত - ১০০% ফ্রি)
           </button>
           <button
             type="button"
-            className="button button-light"
-            onClick={() => setShowGmailHelp(!showGmailHelp)}
+            className={`button ${gmailMode === "smtp" ? "button-primary" : "button-light"}`}
+            style={{ fontSize: "13px", padding: "8px 14px" }}
+            onClick={() => setGmailMode("smtp")}
           >
-            💡 কীভাবে Google App Password পাবেন?
+            🔑 পদ্ধতি ২: Google App Password (SMTP - Paid Render বা নিজস্ব VPS)
           </button>
         </div>
 
-        {showGmailHelp && (
-          <div className="notice" style={{ marginTop: "14px", background: "#f0f7f4", border: "1px solid #cce8dc", color: "#164e3f", padding: "16px", borderRadius: "10px", fontSize: "13px", lineHeight: "1.7" }}>
-            <strong>Google App Password পাওয়ার সহজ ৫টি ধাপ:</strong>
-            <ol style={{ margin: "8px 0 0 18px", padding: 0 }}>
-              <li>আপনার ব্রাউজারে <a href="https://myaccount.google.com/security" target="_blank" rel="noreferrer" style={{ color: "#08785f", textDecoration: "underline", fontWeight: 600 }}>myaccount.google.com/security</a>-তে যান।</li>
-              <li><strong>'2-Step Verification'</strong> অপশনটি চালু আছে কিনা নিশ্চিত করুন (না থাকলে চালু করুন)।</li>
-              <li>সার্চ বারে <strong>'App passwords'</strong> লিখে সার্চ করুন (অথবা 2-Step Verification-এর নিচে 'App passwords'-এ ক্লিক করুন)।</li>
-              <li>App name হিসেবে <code>AccShop</code> লিখে <strong>'Create'</strong> চাপুন।</li>
-              <li>একটি ১৬ অক্ষরের পাসওয়ার্ড (যেমন: <code>abcd efgh ijkl mnop</code>) পাবেন। সেটি কপি করে উপরের বক্সে পেস্ট করে <strong>"Gmail টেস্ট ও সংরক্ষণ করুন"</strong> বাটনে ক্লিক করুন।</li>
-            </ol>
+        {gmailMode === "webhook" ? (
+          <div>
+            <div className="notice" style={{ marginBottom: "14px", background: "#f0fdf4", border: "1px solid #bbf7d0", color: "#166534" }}>
+              <Zap size={16} />
+              <span>
+                <strong>Render Free ব্যবহারকারীদের জন্য:</strong> Render.com তাদের ফ্রি প্ল্যানে আউটবাউন্ড SMTP পোর্ট (465 ও 587) ব্লক করে রাখে। এই Google Apps Script Webhook পদ্ধতিটি স্ট্যান্ডার্ড HTTPS পোর্ট (443) দিয়ে সরাসরি আপনার Gmail থেকে কাস্টমারকে ইমেইল পাঠায়—কোনো পোর্ট ব্লকের ঝামেলা নেই!
+              </span>
+            </div>
+
+            <div className="settings-grid">
+              <label className="field">
+                আপনার Gmail ঠিকানা
+                <input
+                  type="email"
+                  value={gmailUser}
+                  onChange={e => setGmailUser(e.target.value)}
+                  placeholder="yourshop@gmail.com"
+                />
+              </label>
+
+              <label className="field">
+                Google Apps Script Web App URL
+                <input
+                  type="url"
+                  value={gmailWebhookUrl}
+                  onChange={e => setGmailWebhookUrl(e.target.value)}
+                  placeholder="https://script.google.com/macros/s/.../exec"
+                />
+              </label>
+
+              <label className="field full-field">
+                প্রেরক প্রদর্শিত নাম (Store / Sender Display Name)
+                <input
+                  type="text"
+                  value={gmailFromName}
+                  onChange={e => setGmailFromName(e.target.value)}
+                  placeholder="AccZone Shop"
+                />
+              </label>
+            </div>
+
+            <div style={{ display: "flex", gap: "10px", marginTop: "14px", flexWrap: "wrap", alignItems: "center" }}>
+              <button
+                type="button"
+                className="button button-primary"
+                onClick={() => configureGmail.mutate({ gmailUser, webhookUrl: gmailWebhookUrl, fromName: gmailFromName })}
+                disabled={!gmailUser.trim() || !gmailWebhookUrl.trim() || configureGmail.isPending}
+              >
+                {configureGmail.isPending ? <LoaderCircle className="spin" size={14} /> : <ShieldCheck size={14} />}
+                Webhook টেস্ট ও সংরক্ষণ করুন
+              </button>
+              <button
+                type="button"
+                className="button button-light"
+                onClick={() => setShowWebhookGuide(!showWebhookGuide)}
+              >
+                📖 ১ মিনিটের সেটআপ গাইড ও কোড দেখুন
+              </button>
+            </div>
+
+            {showWebhookGuide && (
+              <div className="notice" style={{ marginTop: "14px", background: "#f8fafc", border: "1px solid #cbd5e1", color: "#1e293b", padding: "16px", borderRadius: "10px", fontSize: "13px", lineHeight: "1.7" }}>
+                <strong>Google Apps Script Webhook সেটআপ করার ৫টি সহজ ধাপ:</strong>
+                <ol style={{ margin: "8px 0 12px 18px", padding: 0 }}>
+                  <li>আপনার ব্রাউজারে <a href="https://script.google.com" target="_blank" rel="noreferrer" style={{ color: "#059669", textDecoration: "underline", fontWeight: 600 }}>script.google.com</a>-এ যান এবং <strong>'New project'</strong>-এ ক্লিক করুন।</li>
+                  <li>এডিটরে থাকা কোড মুছে নিচের কোডটুকু পেস্ট করুন:</li>
+                </ol>
+
+                <div style={{ position: "relative", marginBottom: "12px" }}>
+                  <pre style={{ background: "#0f172a", color: "#f8fafc", padding: "14px", borderRadius: "8px", overflowX: "auto", fontSize: "12px", margin: 0, fontFamily: "monospace" }}>
+                    {APPS_SCRIPT_CODE}
+                  </pre>
+                  <button
+                    type="button"
+                    className="button button-light button-sm"
+                    style={{ position: "absolute", top: "8px", right: "8px", fontSize: "11px", padding: "4px 8px" }}
+                    onClick={() => {
+                      navigator.clipboard.writeText(APPS_SCRIPT_CODE);
+                      setCopiedCode(true);
+                      setTimeout(() => setCopiedCode(false), 2000);
+                    }}
+                  >
+                    {copiedCode ? "✓ কপি হয়েছে!" : "কোড কপি করুন"}
+                  </button>
+                </div>
+
+                <ol start={3} style={{ margin: "0 0 0 18px", padding: 0 }}>
+                  <li>উপরের ডানপাশে <strong>Deploy</strong> বাটনে ক্লিক করে <strong>'New deployment'</strong> নির্বাচন করুন।</li>
+                  <li>বামপাশের গিয়ার আইকনে ক্লিক করে <strong>'Web app'</strong> সিলেক্ট করুন। <strong>'Execute as'</strong>-এ 'Me' এবং <strong>'Who has access'</strong>-এ অবশ্যই <strong>'Anyone'</strong> দিন। এরপর <strong>Deploy</strong> চাপুন।</li>
+                  <li>দেওয়া <strong>Web app URL</strong> (যা <code>/exec</code> দিয়ে শেষ হয়) কপি করে ওপরের বক্সে পেস্ট করে <strong>"Webhook টেস্ট ও সংরক্ষণ করুন"</strong> দিন!</li>
+                </ol>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div>
+            <div className="notice warning" style={{ marginBottom: "14px" }}>
+              <AlertTriangle size={16} />
+              <span>
+                <strong>সতর্কতা:</strong> Render.com তাদের Free হোস্টিংয়ে সরাসরি SMTP পোর্ট (465/587) ব্লক করে রাখে। আপনার Render যদি Free প্ল্যানে থাকে, তবে <code>Connection timeout</code> এরর আসবে। Free প্ল্যানের জন্য পদ্ধতি ১ (Google Apps Script Webhook) ব্যবহার করুন অথবা Render-কে $7 Starter প্ল্যানে আপগ্রেড করুন।
+              </span>
+            </div>
+
+            <div className="settings-grid">
+              <label className="field">
+                আপনার Gmail ঠিকানা
+                <input
+                  type="email"
+                  value={gmailUser}
+                  onChange={e => setGmailUser(e.target.value)}
+                  placeholder="yourshop@gmail.com"
+                />
+              </label>
+              <label className="field">
+                Google App Password (১৬ অক্ষরের পাসওয়ার্ড)
+                <input
+                  type="password"
+                  value={gmailAppPass}
+                  onChange={e => setGmailAppPass(e.target.value)}
+                  placeholder="abcd efgh ijkl mnop"
+                />
+              </label>
+              <label className="field full-field">
+                প্রেরক প্রদর্শিত নাম (Store / Sender Display Name)
+                <input
+                  type="text"
+                  value={gmailFromName}
+                  onChange={e => setGmailFromName(e.target.value)}
+                  placeholder="AccZone Shop"
+                />
+              </label>
+            </div>
+
+            <div style={{ display: "flex", gap: "10px", marginTop: "14px", flexWrap: "wrap", alignItems: "center" }}>
+              <button
+                type="button"
+                className="button button-primary"
+                onClick={() => configureGmail.mutate({ gmailUser, appPassword: gmailAppPass, fromName: gmailFromName })}
+                disabled={!gmailUser.trim() || !gmailAppPass.trim() || configureGmail.isPending}
+              >
+                {configureGmail.isPending ? <LoaderCircle className="spin" size={14} /> : <ShieldCheck size={14} />}
+                Gmail টেস্ট ও সংরক্ষণ করুন
+              </button>
+              <button
+                type="button"
+                className="button button-light"
+                onClick={() => setShowGmailHelp(!showGmailHelp)}
+              >
+                💡 কীভাবে Google App Password পাবেন?
+              </button>
+            </div>
+
+            {showGmailHelp && (
+              <div className="notice" style={{ marginTop: "14px", background: "#f0f7f4", border: "1px solid #cce8dc", color: "#164e3f", padding: "16px", borderRadius: "10px", fontSize: "13px", lineHeight: "1.7" }}>
+                <strong>Google App Password পাওয়ার সহজ ৫টি ধাপ:</strong>
+                <ol style={{ margin: "8px 0 0 18px", padding: 0 }}>
+                  <li>আপনার ব্রাউজারে <a href="https://myaccount.google.com/security" target="_blank" rel="noreferrer" style={{ color: "#08785f", textDecoration: "underline", fontWeight: 600 }}>myaccount.google.com/security</a>-তে যান।</li>
+                  <li><strong>'2-Step Verification'</strong> অপশনটি চালু আছে কিনা নিশ্চিত করুন (না থাকলে চালু করুন)।</li>
+                  <li>সার্চ বারে <strong>'App passwords'</strong> লিখে সার্চ করুন (অথবা 2-Step Verification-এর নিচে 'App passwords'-এ ক্লিক করুন)।</li>
+                  <li>App name হিসেবে <code>AccShop</code> লিখে <strong>'Create'</strong> চাপুন।</li>
+                  <li>একটি ১৬ অক্ষরের পাসওয়ার্ড (যেমন: <code>abcd efgh ijkl mnop</code>) পাবেন। সেটি কপি করে উপরের বক্সে পেস্ট করে <strong>"Gmail টেস্ট ও সংরক্ষণ করুন"</strong> বাটনে ক্লিক করুন।</li>
+                </ol>
+              </div>
+            )}
           </div>
         )}
 

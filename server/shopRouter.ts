@@ -651,12 +651,21 @@ export const shopRouter = router({
       orderStatus: adminProcedure.input(z.object({ orderId: z.number().int().positive() })).query(async ({ input }) => customerRecentDeliveryMail(input.orderId)),
       configureGmail: adminProcedure.input(z.object({
         gmailUser: z.string().trim().email("সঠিক Gmail ঠিকানা দিন").max(320),
-        appPassword: z.string().trim().min(8, "কমপক্ষে ৮ অক্ষরের App Password দিন").max(128),
+        appPassword: z.string().trim().max(128).optional(),
+        webhookUrl: z.string().trim().max(512).optional(),
         fromName: z.string().trim().max(100).optional(),
       })).mutation(async ({ input }) => {
         try {
-          const res = await saveGmailCredentials(input.gmailUser, input.appPassword, input.fromName || "AccZone Shop");
-          return { success: true, user: res.user, message: "Gmail সফলভাবে সংযুক্ত ও যাচাই হয়েছে! এখন থেকে সব অ্যাকাউন্ট অ্যাক্টিভেশন ও ডেলিভারি মেইল এই Gmail থেকে সরাসরি যাবে।" };
+          const res = await saveGmailCredentials({
+            user: input.gmailUser,
+            pass: input.appPassword,
+            webhookUrl: input.webhookUrl,
+            fromName: input.fromName || "AccZone Shop",
+          });
+          const successNotice = res.mode === "webhook"
+            ? "Google Apps Script Webhook সফলভাবে সংযুক্ত হয়েছে! Render Free হোস্টিংয়ে কোনো পোর্ট ব্লক ছাড়াই আপনার Gmail দিয়ে ইমেইল যাবে।"
+            : "Gmail SMTP সফলভাবে সংযুক্ত ও যাচাই হয়েছে! এখন থেকে সব অ্যাকাউন্ট অ্যাক্টিভেশন ও ডেলিভারি মেইল এই Gmail থেকে সরাসরি যাবে।";
+          return { success: true, user: res.user, message: successNotice };
         } catch (error) {
           const msg = error instanceof Error ? error.message : "Gmail setup failed";
           throw new TRPCError({ code: "BAD_REQUEST", message: msg });
