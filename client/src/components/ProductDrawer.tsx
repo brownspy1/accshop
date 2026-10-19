@@ -92,7 +92,7 @@ export default function ProductDrawer({
           style={{ backgroundColor: "var(--jade-mist)", borderColor: "var(--line)" }}
         >
           <div className="flex items-center gap-3.5 min-w-0">
-            <BrandLogoSquircle brand={meta.brand} size={52} />
+            <BrandLogoSquircle brand={meta.brand} imageUrl={selectedVariant.imageUrl} size={52} />
             <div className="min-w-0">
               <h2 className="font-display font-bold text-xl leading-snug text-slate-900 truncate">
                 {selectedVariant.name}

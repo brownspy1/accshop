@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { formatMoney } from "@/lib/shop";
+import { BrandLogoSquircle } from "./BrandLogos";
 import { useCart } from "@/contexts/CartContext";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
@@ -128,21 +129,20 @@ export default function ProductDetailsModal({
         <div className="product-modal-content">
           {/* Left Column: Visual & Guarantee */}
           <div className="product-modal-visual">
-            <div className="product-modal-image-box">
-              {product.imageUrl ? (
+            <div className="product-modal-image-box flex items-center justify-center p-6 bg-slate-50/80">
+              {product.imageUrl && (product.imageUrl.startsWith("http") || product.imageUrl.startsWith("/api/") || product.imageUrl.startsWith("data:")) ? (
                 <img
                   src={product.imageUrl}
                   alt={product.name}
-                  className="product-modal-image"
+                  className="product-modal-image max-h-48 object-contain rounded-2xl"
                 />
               ) : (
-                <div className="product-modal-placeholder">
-                  <div className="placeholder-mark">
-                    <span>{product.serviceKey.slice(0, 2).toUpperCase()}</span>
-                    <Sparkles className="placeholder-spark" size={24} />
-                  </div>
-                  <span className="placeholder-tag">{category}</span>
-                </div>
+                <BrandLogoSquircle
+                  brand={product.name}
+                  imageUrl={product.imageUrl}
+                  size={96}
+                  className="shadow-sm"
+                />
               )}
             </div>
 

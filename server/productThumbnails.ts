@@ -3,12 +3,12 @@ import { activationServices } from "../drizzle/schema";
 import type { getDb } from "./db";
 
 export const DEFAULT_PRODUCT_THUMBNAILS: Record<string, string> = {
-  geminilive: "/images/products/gemini-pro.jpg",
-  cs_24f8a6e1bbb3d0e7695f12bc8237964e13a291b4: "/images/products/gemini-pro.jpg",
-  ADOBE_EXPRESS: "/images/products/adobe-express.jpg",
-  cs_fa83028def2911a1d43c8daf401640e2d495c640: "/images/products/adobe-express.jpg",
-  DUOLINGO: "/images/products/duolingo-super.jpg",
-  cs_e659101c6b5f5ef88295ad5db35a327b810b990d: "/images/products/pocket-fm.jpg",
+  geminilive: "brand:gemini",
+  cs_24f8a6e1bbb3d0e7695f12bc8237964e13a291b4: "brand:gemini",
+  ADOBE_EXPRESS: "brand:adobe",
+  cs_fa83028def2911a1d43c8daf401640e2d495c640: "brand:adobe",
+  DUOLINGO: "brand:duolingo",
+  cs_e659101c6b5f5ef88295ad5db35a327b810b990d: "brand:pocket",
 };
 
 export function getProductThumbnail(serviceKey: string, name?: string | null): string {
@@ -16,16 +16,27 @@ export function getProductThumbnail(serviceKey: string, name?: string | null): s
     return DEFAULT_PRODUCT_THUMBNAILS[serviceKey];
   }
   const clean = `${serviceKey || ""} ${name || ""}`.toLowerCase();
-  if (clean.includes("gemini")) return "/images/products/gemini-pro.jpg";
-  if (clean.includes("adobe") || clean.includes("express")) return "/images/products/adobe-express.jpg";
-  if (clean.includes("duolingo")) return "/images/products/duolingo-super.jpg";
-  if (clean.includes("pocket") || clean.includes("fm")) return "/images/products/pocket-fm.jpg";
+  if (clean.includes("gemini")) return "brand:gemini";
+  if (clean.includes("adobe") || clean.includes("express")) return "brand:adobe";
+  if (clean.includes("duolingo")) return "brand:duolingo";
+  if (clean.includes("pocket") || clean.includes("fm")) return "brand:pocket";
+  if (clean.includes("spotify")) return "brand:spotify";
+  if (clean.includes("netflix")) return "brand:netflix";
+  if (clean.includes("chatgpt") || clean.includes("openai") || clean.includes("gpt")) return "brand:chatgpt";
+  if (clean.includes("youtube")) return "brand:youtube";
+  if (clean.includes("canva")) return "brand:canva";
+  if (clean.includes("telegram")) return "brand:telegram";
+  if (clean.includes("apple")) return "brand:apple";
+  if (clean.includes("prime")) return "brand:prime";
+  if (clean.includes("discord")) return "brand:discord";
+  if (clean.includes("nord") || clean.includes("vpn")) return "brand:nordvpn";
+  if (clean.includes("office") || clean.includes("microsoft")) return "brand:office";
   return "";
 }
 
 /**
- * Automatically backfill/persist thumbnail images into the database for any
- * active products whose imageUrl is currently empty.
+ * Automatically backfill/persist thumbnail icons into the database for any
+ * active products whose imageUrl is currently empty or still pointing to deleted static images.
  */
 export async function ensureProductThumbnailsInDb(db: NonNullable<Awaited<ReturnType<typeof getDb>>>): Promise<number> {
   try {
@@ -35,20 +46,29 @@ export async function ensureProductThumbnailsInDb(db: NonNullable<Awaited<Return
         name: activationServices.name,
         imageUrl: activationServices.imageUrl,
       })
-      .from(activationServices)
-      .where(or(isNull(activationServices.imageUrl), eq(activationServices.imageUrl, "")));
+      .from(activationServices);
 
     let updatedCount = 0;
     const now = new Date();
 
     for (const row of rows) {
-      const targetImage = getProductThumbnail(row.serviceKey, row.name);
-      if (targetImage) {
+      // If imageUrl points to deleted /images/products/, reset to brand icon
+      if (row.imageUrl && row.imageUrl.includes("/images/products/")) {
+        const targetIcon = getProductThumbnail(row.serviceKey, row.name);
         await db
           .update(activationServices)
-          .set({ imageUrl: targetImage, updatedAt: now })
+          .set({ imageUrl: targetIcon, updatedAt: now })
           .where(eq(activationServices.serviceKey, row.serviceKey));
         updatedCount++;
+      } else if (!row.imageUrl) {
+        const targetIcon = getProductThumbnail(row.serviceKey, row.name);
+        if (targetIcon) {
+          await db
+            .update(activationServices)
+            .set({ imageUrl: targetIcon, updatedAt: now })
+            .where(eq(activationServices.serviceKey, row.serviceKey));
+          updatedCount++;
+        }
       }
     }
 

@@ -1,8 +1,9 @@
 import { BrandMark } from "@/components/StoreHeader";
+import { BrandLogoSquircle, BRAND_ICON_PRESETS } from "@/components/BrandLogos";
 import { startLogin } from "@/const";
 import { trpc } from "@/lib/trpc";
 import { formatMoney, orderStatusLabels } from "@/lib/shop";
-import { Activity, AlertTriangle, ArrowDownRight, ArrowLeft, ArrowRight, BadgeCheck, Banknote, Boxes, Check, CheckCircle2, ChevronDown, ChevronRight, CircleDollarSign, ClipboardList, Clock3, CreditCard, ExternalLink, Eye, EyeOff, FileText, ImagePlus, KeyRound, LayoutDashboard, LoaderCircle, LogOut, Mail, PackageCheck, RefreshCw, Save, Search, Settings2, ShieldCheck, ShoppingBag, Store, TrendingUp, Wallet, X, Zap } from "lucide-react";
+import { Activity, AlertTriangle, ArrowDownRight, ArrowLeft, ArrowRight, BadgeCheck, Banknote, Boxes, Check, CheckCircle2, ChevronDown, ChevronRight, CircleDollarSign, ClipboardList, Clock3, CreditCard, ExternalLink, Eye, EyeOff, FileText, ImagePlus, KeyRound, LayoutDashboard, LoaderCircle, LogOut, Mail, PackageCheck, RefreshCw, Save, Search, Settings2, ShieldCheck, ShoppingBag, Sparkles, Store, TrendingUp, Wallet, X, Zap } from "lucide-react";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { Link } from "wouter";
 import { toast } from "sonner";
@@ -361,11 +362,26 @@ function ServiceRow({ item }: { item: ServiceRowInput }) {
   const [reviewConfirmed, setReviewConfirmed] = useState(false);
   const [customDesc, setCustomDesc] = useState(item.customDescription || "");
   const [editDescOpen, setEditDescOpen] = useState(false);
+  const [imageUrl, setImageUrl] = useState(item.imageUrl || "");
+  const [editIconOpen, setEditIconOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const needsPriceReview = item.priceReviewRequired === 1 || (Number(price) > 0 && item.retailPrice <= 0 && (item.supplierPrice <= 0 || item.priceMarkupRatio === 0));
-  const save = trpc.shop.admin.services.update.useMutation({ onSuccess: () => { toast.success(reviewConfirmed ? "দাম save এবং review complete হয়েছে" : "Service update হয়েছে"); void utils.shop.admin.services.list.invalidate(); void utils.shop.catalog.list.invalidate(); }, onError: error => toast.error(error.message) });
-  useEffect(() => { setPrice(String(item.retailPrice || "")); setListed(Boolean(item.isListed)); setReviewConfirmed(false); setCustomDesc(item.customDescription || ""); }, [item.retailPrice, item.isListed, item.priceReviewRequired, item.customDescription]);
+  const save = trpc.shop.admin.services.update.useMutation({
+    onSuccess: () => {
+      toast.success(reviewConfirmed ? "দাম save এবং review complete হয়েছে" : "Service update হয়েছে");
+      void utils.shop.admin.services.list.invalidate();
+      void utils.shop.catalog.list.invalidate();
+    },
+    onError: error => toast.error(error.message),
+  });
+  useEffect(() => {
+    setPrice(String(item.retailPrice || ""));
+    setListed(Boolean(item.isListed));
+    setReviewConfirmed(false);
+    setCustomDesc(item.customDescription || "");
+    setImageUrl(item.imageUrl || "");
+  }, [item.retailPrice, item.isListed, item.priceReviewRequired, item.customDescription, item.imageUrl]);
   const available = Math.max(0, item.stock - item.reservedStock);
   let tiers: Array<{ minQuantity: number; maxQuantity: number; priceInr: number; priceUsdt: number }> = [];
   try { const parsed: unknown = item.pricingTiers ? JSON.parse(item.pricingTiers) : []; if (Array.isArray(parsed)) tiers = parsed as typeof tiers; } catch { tiers = []; }
@@ -375,18 +391,127 @@ function ServiceRow({ item }: { item: ServiceRowInput }) {
       setUploading(true);
       const blob = await compressProductImage(file);
       const response = await fetch(`/api/admin/product-image/${encodeURIComponent(item.serviceKey)}`, { method: "POST", headers: { "Content-Type": blob.type }, body: blob });
-      const payload = await response.json().catch(() => ({})) as { error?: string };
+      const payload = await response.json().catch(() => ({})) as { error?: string; imageUrl?: string };
       if (!response.ok) throw new Error(payload.error || "Product image save হয়নি।");
+      if (payload.imageUrl) setImageUrl(payload.imageUrl);
       toast.success("Product image secure storage-এ save হয়েছে");
-      void utils.shop.admin.services.list.invalidate(); void utils.shop.catalog.list.invalidate();
+      void utils.shop.admin.services.list.invalidate();
+      void utils.shop.catalog.list.invalidate();
     } catch (error) { toast.error(error instanceof Error ? error.message : "Image upload ব্যর্থ হয়েছে"); }
     finally { setUploading(false); }
   };
   return <div className="service-row">
     <div className="service-cell">
-      {item.imageUrl ? <img className="service-photo" src={item.imageUrl} alt="" loading="lazy" /> : <span className="mini-product-mark">{item.provider === "couponshops" ? "CS" : "AZ"}</span>}
-      <div><b>{item.name}</b><small>{item.provider} · {item.providerServiceId || item.serviceKey}</small>
-        <div className="image-upload-control"><input ref={fileRef} hidden type="file" accept="image/jpeg,image/png,image/webp" onChange={event => { const selected = event.target.files?.[0]; if (selected) void upload(selected); event.currentTarget.value = ""; }} /><button type="button" className="text-link" onClick={() => fileRef.current?.click()} disabled={uploading}>{uploading ? <LoaderCircle size={12} className="spin" /> : <ImagePlus size={12} />}{item.imageUrl ? "Change image" : "Add image"}</button></div>
+      <BrandLogoSquircle brand={item.name} imageUrl={imageUrl} size={42} className="shrink-0" />
+      <div>
+        <b>{item.name}</b>
+        <small>{item.provider} · {item.providerServiceId || item.serviceKey}</small>
+        
+        {/* Icon & Thumbnail Editor Trigger */}
+        <div className="flex items-center gap-2 mt-0.5">
+          <button type="button" className="text-link flex items-center gap-1 text-[11px]" onClick={() => setEditIconOpen(!editIconOpen)}>
+            <Sparkles size={11} />
+            {imageUrl ? "Change icon / logo" : "Set brand icon"}
+          </button>
+          {imageUrl && (
+            <span className="text-[10px] px-1.5 py-0.2 rounded bg-slate-100 text-slate-600 font-mono">
+              {imageUrl.startsWith("brand:") ? imageUrl.replace("brand:", "") : "custom"}
+            </span>
+          )}
+        </div>
+
+        {/* Icon Picker & URL Editor Box */}
+        {editIconOpen && (
+          <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl my-2 flex flex-col gap-2.5 max-w-md">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-800">কার্ডের আইকন / লোগো নির্বাচন করুন:</span>
+              <button type="button" className="text-xs text-slate-500 hover:text-slate-800" onClick={() => setEditIconOpen(false)}>
+                <X size={14} />
+              </button>
+            </div>
+
+            {/* Quick Brand Preset Pills */}
+            <div className="flex flex-wrap gap-1">
+              {BRAND_ICON_PRESETS.map((preset) => {
+                const isSelected = imageUrl === preset.id || (!imageUrl && item.name.toLowerCase().includes(preset.brand));
+                return (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    onClick={() => setImageUrl(preset.id)}
+                    className={`text-[10px] font-semibold px-2 py-1 rounded-md border flex items-center gap-1 transition-all ${
+                      isSelected
+                        ? "bg-emerald-700 text-white border-emerald-800 shadow-2xs font-bold"
+                        : "bg-white text-slate-700 border-slate-200 hover:bg-slate-100"
+                    }`}
+                  >
+                    <BrandLogoSquircle imageUrl={preset.id} size={14} />
+                    <span>{preset.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Custom URL Input */}
+            <div className="flex flex-col gap-1 mt-0.5">
+              <span className="text-[10px] font-bold text-slate-600">বা কাস্টম ইমেজ / SVG URL লিংক:</span>
+              <div className="flex gap-1.5">
+                <input
+                  type="text"
+                  value={imageUrl}
+                  onChange={(e) => setImageUrl(e.target.value)}
+                  placeholder="https://... বা brand:spotify"
+                  className="flex-1 px-2.5 py-1 text-xs border rounded-lg bg-white outline-none focus:border-emerald-600"
+                />
+                {imageUrl && (
+                  <button
+                    type="button"
+                    onClick={() => setImageUrl("")}
+                    className="px-2 py-1 text-[11px] font-semibold text-slate-600 bg-slate-200 hover:bg-slate-300 rounded-lg"
+                    title="Default brand icon"
+                  >
+                    Reset
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* File Upload & Save Row */}
+            <div className="flex items-center justify-between pt-1 border-t border-slate-200 text-xs">
+              <div className="image-upload-control" style={{ margin: 0 }}>
+                <input ref={fileRef} hidden type="file" accept="image/jpeg,image/png,image/webp" onChange={event => { const selected = event.target.files?.[0]; if (selected) void upload(selected); event.currentTarget.value = ""; }} />
+                <button type="button" className="text-link text-[11px] flex items-center gap-1" onClick={() => fileRef.current?.click()} disabled={uploading}>
+                  {uploading ? <LoaderCircle size={11} className="spin" /> : <ImagePlus size={11} />}
+                  ফাইল আপলোড
+                </button>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  className="button button-sm button-primary"
+                  onClick={() => {
+                    save.mutate({
+                      serviceKey: item.serviceKey,
+                      retailPrice: Number(price || 0),
+                      isListed: listed,
+                      confirmPriceReview: reviewConfirmed,
+                      customDescription: customDesc.trim() || null,
+                      imageUrl: imageUrl.trim() || null,
+                    });
+                    setEditIconOpen(false);
+                  }}
+                  disabled={save.isPending}
+                >
+                  Save icon
+                </button>
+                <button type="button" className="button button-sm button-light" onClick={() => setEditIconOpen(false)}>
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {needsPriceReview && <small className="price-review-flag"><AlertTriangle size={12} /> দাম যাচাই দরকার · FX rate বা retail price দিন</small>}
         <div className="custom-desc-trigger">
           <button type="button" className="text-link" onClick={() => setEditDescOpen(!editDescOpen)}>
@@ -401,8 +526,8 @@ function ServiceRow({ item }: { item: ServiceRowInput }) {
             <textarea rows={3} value={customDesc} onChange={e => setCustomDesc(e.target.value)} placeholder="সার্ভিসের নিজস্ব বিবরণ, সুবিধা বা শর্তাবলী লিখুন..." />
           </label>
           <div className="desc-actions">
-            <button type="button" className="button button-sm button-primary" onClick={() => { save.mutate({ serviceKey: item.serviceKey, retailPrice: Number(price || 0), isListed: listed, confirmPriceReview: reviewConfirmed, customDescription: customDesc.trim() || null }); setEditDescOpen(false); }} disabled={save.isPending}>Save description</button>
-            {item.customDescription && <button type="button" className="button button-sm button-light" onClick={() => { setCustomDesc(""); save.mutate({ serviceKey: item.serviceKey, retailPrice: Number(price || 0), isListed: listed, confirmPriceReview: reviewConfirmed, customDescription: null }); setEditDescOpen(false); }} disabled={save.isPending}>Reset to supplier</button>}
+            <button type="button" className="button button-sm button-primary" onClick={() => { save.mutate({ serviceKey: item.serviceKey, retailPrice: Number(price || 0), isListed: listed, confirmPriceReview: reviewConfirmed, customDescription: customDesc.trim() || null, imageUrl: imageUrl.trim() || null }); setEditDescOpen(false); }} disabled={save.isPending}>Save description</button>
+            {item.customDescription && <button type="button" className="button button-sm button-light" onClick={() => { setCustomDesc(""); save.mutate({ serviceKey: item.serviceKey, retailPrice: Number(price || 0), isListed: listed, confirmPriceReview: reviewConfirmed, customDescription: null, imageUrl: imageUrl.trim() || null }); setEditDescOpen(false); }} disabled={save.isPending}>Reset to supplier</button>}
             <button type="button" className="button button-sm button-light" onClick={() => setEditDescOpen(false)}>Close</button>
           </div>
           {item.description && <details className="supplier-desc-reference"><summary>Original Supplier Description (Reference)</summary><p>{item.description}</p></details>}
@@ -417,7 +542,7 @@ function ServiceRow({ item }: { item: ServiceRowInput }) {
     <label className="retail-input"><input type="number" min="0" max="10000000" step="0.01" value={price} onChange={event => setPrice(event.target.value)} aria-label={`${item.name} retail price`} placeholder="0.00" /><small>{item.priceMarkupRatio > 0 ? `Retail · ×${item.priceMarkupRatio.toFixed(2)} markup` : "Retail price"}</small></label>
     <button type="button" className={`toggle-switch ${listed ? "on" : ""}`} onClick={() => setListed(!listed)} aria-pressed={listed} disabled={!item.isActive || available < 1 || Number(price) <= 0} aria-label="Storefront visibility"><i /></button>
     {needsPriceReview && <label className="price-review-confirm"><input type="checkbox" checked={reviewConfirmed} onChange={event => setReviewConfirmed(event.target.checked)} /><span>Supplier cost, currency ও retail price যাচাই করেছি</span></label>}
-    <button className="icon-save" title={needsPriceReview ? "Save price and mark reviewed" : "Save service"} onClick={() => save.mutate({ serviceKey: item.serviceKey, retailPrice: Number(price || 0), isListed: listed, confirmPriceReview: reviewConfirmed, customDescription: customDesc.trim() || null })} disabled={save.isPending || (needsPriceReview && listed && !reviewConfirmed)}><Save size={15} /></button>
+    <button className="icon-save" title={needsPriceReview ? "Save price and mark reviewed" : "Save service"} onClick={() => save.mutate({ serviceKey: item.serviceKey, retailPrice: Number(price || 0), isListed: listed, confirmPriceReview: reviewConfirmed, customDescription: customDesc.trim() || null, imageUrl: imageUrl.trim() || null })} disabled={save.isPending || (needsPriceReview && listed && !reviewConfirmed)}><Save size={15} /></button>
   </div>;
 }
 

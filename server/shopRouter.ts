@@ -193,7 +193,7 @@ const FALLBACK_STORE_CATALOG = [
     name: "Gemini 18 month pro",
     description: "Gemini 1.5 Pro & Advanced AI subscription with full access to Gemini features",
     customDescription: "Gemini 1.5 Pro ও Advanced AI মডেলের ফুল অ্যাক্সেস",
-    imageUrl: "/images/products/gemini-pro.jpg",
+    imageUrl: "brand:gemini",
     retailPrice: 40,
     stock: 13,
     stockFresh: true,
@@ -208,7 +208,7 @@ const FALLBACK_STORE_CATALOG = [
     name: "Gemini Pro 18M NEW",
     description: "New Gemini Pro 18 Months subscription for your personal account",
     customDescription: "Gemini 1.5 Pro ও Advanced AI মডেলের ফুল অ্যাক্সেস (নতুন ব্যাচ)",
-    imageUrl: "/images/products/gemini-pro.jpg",
+    imageUrl: "brand:gemini",
     retailPrice: 45,
     stock: 8,
     stockFresh: true,
@@ -223,7 +223,7 @@ const FALLBACK_STORE_CATALOG = [
     name: "Adobe Express 12M",
     description: "Adobe Express 12 Months creative subscription on your own personal email account",
     customDescription: "নিজের ইমেইলে Adobe Express ক্রিয়েটিভ সুইটের অ্যাক্সেস",
-    imageUrl: "/images/products/adobe-express.jpg",
+    imageUrl: "brand:adobe",
     retailPrice: 50,
     stock: 45,
     stockFresh: true,
@@ -238,7 +238,7 @@ const FALLBACK_STORE_CATALOG = [
     name: "Adobe Express 12M readyMade ID",
     description: "Adobe Express 12 Months pre-activated readyMade ID and password",
     customDescription: "রেডিমেড আইডি সহ Adobe Express প্রিমিয়ামের পূর্ণ সুবিধা",
-    imageUrl: "/images/products/adobe-express.jpg",
+    imageUrl: "brand:adobe",
     retailPrice: 100,
     stock: 15,
     stockFresh: true,
@@ -253,7 +253,7 @@ const FALLBACK_STORE_CATALOG = [
     name: "Duolingo Super 12M",
     description: "Duolingo Super 12 Months ad-free language learning with unlimited hearts",
     customDescription: "বিজ্ঞাপনহীন সুপার লার্নিং, আনলিমিটেড হার্টস ও প্র্যাকটিস টেস্ট",
-    imageUrl: "/images/products/duolingo-super.jpg",
+    imageUrl: "brand:duolingo",
     retailPrice: 60,
     stock: 30,
     stockFresh: true,
@@ -268,7 +268,7 @@ const FALLBACK_STORE_CATALOG = [
     name: "PocketFM 3M",
     description: "Pocket FM 3 Months VIP subscription for unlimited audio stories and series",
     customDescription: "সব অডিও সিরিজ ও এক্সক্লুসিভ স্টোরিজের আনলিমিটেড স্ট্রিমিং",
-    imageUrl: "/images/products/pocket-fm.jpg",
+    imageUrl: "brand:pocket",
     retailPrice: 50,
     stock: 25,
     stockFresh: true,
@@ -620,6 +620,7 @@ export const shopRouter = router({
         isListed: z.boolean(),
         confirmPriceReview: z.boolean().default(false),
         customDescription: z.string().max(10_000).nullable().optional(),
+        imageUrl: z.string().max(2048).nullable().optional(),
       })).mutation(async ({ input }) => {
         const db = await getDb();
         if (!db) throw new Error("Database is not available");
@@ -641,6 +642,9 @@ export const shopRouter = router({
         };
         if (input.customDescription !== undefined) {
           updateValues.customDescription = input.customDescription?.trim() ? input.customDescription.trim() : null;
+        }
+        if (input.imageUrl !== undefined) {
+          updateValues.imageUrl = input.imageUrl?.trim() ?? "";
         }
         await db.update(activationServices).set(updateValues).where(eq(activationServices.serviceKey, input.serviceKey));
         return { success: true };

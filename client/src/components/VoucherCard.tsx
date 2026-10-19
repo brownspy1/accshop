@@ -86,6 +86,7 @@ export default function VoucherCard({
           <div className="flex items-center gap-3.5 min-w-0">
             <BrandLogoSquircle
               brand={meta.brand}
+              imageUrl={activeVariant.imageUrl}
               size={56}
               className={`group-hover:scale-105 transition-transform ${isOutOfStock ? "grayscale" : ""}`}
             />

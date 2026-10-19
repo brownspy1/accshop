@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 
 interface BrandIconProps {
   className?: string;
@@ -83,6 +83,204 @@ export function PocketFmIcon({ className = "", size = 28 }: BrandIconProps) {
   );
 }
 
+export function ChatGptIcon({ className = "", size = 28 }: BrandIconProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      xmlns="http://www.w3.org/2000/svg"
+      className={className}
+      aria-hidden="true"
+    >
+      <path d="M22.28 9.82a5.98 5.98 0 0 0-.52-4.91 6.05 6.05 0 0 0-6.51-2.9 6.07 6.07 0 0 0-4.27 2.17 5.98 5.98 0 0 0-4 2.9 6.05 6.05 0 0 0 .74 7.1 5.98 5.98 0 0 0 .51 4.91 6.05 6.05 0 0 0 6.52 2.9A5.98 5.98 0 0 0 13.26 24a6.06 6.06 0 0 0 5.77-4.2 5.99 5.99 0 0 0 4-2.9 6.06 6.06 0 0 0-.75-7.08zm-9.02 12.61a4.48 4.48 0 0 1-2.88-1.04l.14-.08 4.78-2.76a.79.79 0 0 0 .39-.68v-6.74l2.02 1.17a.07.07 0 0 1 .04.05v5.59a4.5 4.5 0 0 1-4.49 4.49zM3.6 16.9a4.47 4.47 0 0 1-.53-3.02l.14.09 4.78 2.76a.77.77 0 0 0 .78 0l5.84-3.37v2.33a.08.08 0 0 1-.03.06L9.74 18.55a4.5 4.5 0 0 1-6.14-1.66zm-1.12-9.53a4.46 4.46 0 0 1 2.34-1.97v5.44a.79.79 0 0 0 .39.68l5.81 3.35-2.02 1.17a.08.08 0 0 1-.07 0L4.1 13.24a4.5 4.5 0 0 1-1.62-5.87zm16.65 4.28l-5.84-3.37V5.95a.08.08 0 0 1 .03-.06l4.85-2.8a4.5 4.5 0 0 1 6.67 4.67l-.14-.08-4.78-2.76a.77.77 0 0 0-.79 0zm2.01-3.02V3.05a4.5 4.5 0 0 1 1.62 5.87 4.47 4.47 0 0 1-2.34 1.97V5.42a.79.79 0 0 0-.39-.68l-5.81-3.35 2.02-1.17a.08.08 0 0 1 .07 0l4.83 2.79zM10.74 13.5l-2.6-1.5 2.6-1.5 2.61 1.5-2.61 1.5z" />
+    </svg>
+  );
+}
+
+export function SpotifyIcon({ className = "", size = 28 }: BrandIconProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      xmlns="http://www.w3.org/2000/svg"
+      className={className}
+      aria-hidden="true"
+    >
+      <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.59 14.42c-.18.3-.56.39-.86.21-2.35-1.44-5.3-1.76-8.79-.96-.34.08-.67-.13-.75-.47-.08-.34.13-.67.47-.75 3.81-.87 7.08-.51 9.71 1.11.3.18.39.56.22.86zm1.22-2.72c-.22.37-.71.48-1.07.25-2.69-1.65-6.79-2.13-9.97-1.16-.41.13-.85-.11-.98-.52-.13-.41.11-.85.52-.98 3.63-1.1 8.15-.57 11.24 1.33.37.23.48.71.26 1.08zm.11-2.84C14.69 8.95 9.38 8.78 6.3 9.71c-.49.15-1.02-.13-1.17-.62-.15-.5.13-1.02.62-1.17 3.53-1.07 9.4-.87 13.12 1.34.45.26.59.84.33 1.29-.26.44-.84.59-1.28.31z" />
+    </svg>
+  );
+}
+
+export function NetflixIcon({ className = "", size = 28 }: BrandIconProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      xmlns="http://www.w3.org/2000/svg"
+      className={className}
+      aria-hidden="true"
+    >
+      <path d="M5.4 0v24c1.2-.27 2.4-.5 3.63-.7V0H5.4zm9.57 0v19.47c1.23.15 2.44.35 3.63.59V0h-3.63zM9.03 0l5.94 19.47V0h3.63L12.66 24H9.03V4.53L9.03 0z" />
+    </svg>
+  );
+}
+
+export function YouTubeIcon({ className = "", size = 28 }: BrandIconProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      xmlns="http://www.w3.org/2000/svg"
+      className={className}
+      aria-hidden="true"
+    >
+      <path d="M23.5 6.19a3.02 3.02 0 0 0-2.12-2.14C19.5 3.55 12 3.55 12 3.55s-7.5 0-9.38.5A3.02 3.02 0 0 0 .5 6.2C0 8.07 0 12 0 12s0 3.93.5 5.81a3.02 3.02 0 0 0 2.12 2.14c1.88.5 9.38.5 9.38.5s7.5 0 9.38-.5a3.02 3.02 0 0 0 2.12-2.14c.5-1.88.5-5.81.5-5.81s0-3.93-.5-5.81zM9.55 15.57V8.43L15.82 12l-6.27 3.57z" />
+    </svg>
+  );
+}
+
+export function CanvaIcon({ className = "", size = 28 }: BrandIconProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      xmlns="http://www.w3.org/2000/svg"
+      className={className}
+      aria-hidden="true"
+    >
+      <path d="M12 2a10 10 0 1 0 10 10A10.01 10.01 0 0 0 12 2zm1.2 14.8a4.8 4.8 0 1 1 3.4-8.2l-1.4 1.4a2.8 2.8 0 1 0 0 4l1.4 1.4a4.77 4.77 0 0 1-3.4 1.4z" />
+    </svg>
+  );
+}
+
+export function TelegramIcon({ className = "", size = 28 }: BrandIconProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      xmlns="http://www.w3.org/2000/svg"
+      className={className}
+      aria-hidden="true"
+    >
+      <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69a.2.2 0 0 0-.05-.18c-.06-.05-.14-.03-.21-.02-.09.02-1.49.95-4.22 2.79-.4.27-.76.41-1.08.4-.36-.01-1.04-.2-1.55-.37-.63-.2-1.12-.31-1.08-.66.02-.18.27-.36.74-.55 2.92-1.27 4.86-2.11 5.83-2.51 2.78-1.16 3.35-1.36 3.73-1.36.08 0 .27.02.39.12.1.08.13.19.14.27-.01.06.01.24 0 .37z" />
+    </svg>
+  );
+}
+
+export function PrimeVideoIcon({ className = "", size = 28 }: BrandIconProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      xmlns="http://www.w3.org/2000/svg"
+      className={className}
+      aria-hidden="true"
+    >
+      <path d="M2.5 14.5c4.5 3 11.5 4 17 0 .5-.3 1.2.2.8.7-4.8 4.2-12.8 4.2-18.6 0-.5-.4-.1-1 .8-.7zM19.7 13.9c-.3-.4-1.8-.2-2.5-.1-.2 0-.3-.2-.1-.4 1.1-1 3.2-.8 3.5-.4.3.4-.2 2.5-1.3 3.4-.2.1-.4 0-.3-.2.3-.6.9-1.9.7-2.3z" />
+    </svg>
+  );
+}
+
+export function AppleIcon({ className = "", size = 28 }: BrandIconProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      xmlns="http://www.w3.org/2000/svg"
+      className={className}
+      aria-hidden="true"
+    >
+      <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M15.97 6.87c.6-.74 1.01-1.77.9-2.8-.88.04-1.95.59-2.58 1.33-.56.65-.99 1.7-1.02 2.73.99.08 2-.52 2.7-1.26z" />
+    </svg>
+  );
+}
+
+export function DiscordIcon({ className = "", size = 28 }: BrandIconProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      xmlns="http://www.w3.org/2000/svg"
+      className={className}
+      aria-hidden="true"
+    >
+      <path d="M20.32 4.37a19.8 19.8 0 0 0-4.89-1.52.07.07 0 0 0-.08.04c-.21.37-.44.86-.6 1.25a18.27 18.27 0 0 0-5.49 0 12.64 12.64 0 0 0-.62-1.25.08.08 0 0 0-.08-.04A19.74 19.74 0 0 0 3.68 4.37a.07.07 0 0 0-.03.03C.53 9.05-.32 13.58.1 18.06a.08.08 0 0 0 .03.05 19.9 19.9 0 0 0 6 3.03.08.08 0 0 0 .08-.03c.46-.63.87-1.3 1.22-2a.08.08 0 0 0-.04-.1 13.1 13.1 0 0 1-1.87-.9.08.08 0 0 1-.01-.12c.13-.1.25-.2.37-.3a.07.07 0 0 1 .08-.01c3.93 1.8 8.18 1.8 12.06 0a.07.07 0 0 1 .08.01c.12.1.24.2.37.3a.08.08 0 0 1-.01.12 12.3 12.3 0 0 1-1.87.9.08.08 0 0 0-.04.1c.36.7.77 1.37 1.22 2a.08.08 0 0 0 .08.03 19.84 19.84 0 0 0 6-3.03.08.08 0 0 0 .04-.05c.5-5.18-.84-9.68-3.55-13.66a.06.06 0 0 0-.03-.03zM8.02 15.33c-1.18 0-2.16-1.08-2.16-2.42 0-1.33.96-2.42 2.16-2.42 1.21 0 2.18 1.1 2.16 2.42 0 1.33-.96 2.42-2.16 2.42zm7.98 0c-1.19 0-2.16-1.08-2.16-2.42 0-1.33.95-2.42 2.16-2.42 1.21 0 2.17 1.1 2.16 2.42 0 1.33-.95 2.42-2.16 2.42z" />
+    </svg>
+  );
+}
+
+export function NordVpnIcon({ className = "", size = 28 }: BrandIconProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      xmlns="http://www.w3.org/2000/svg"
+      className={className}
+      aria-hidden="true"
+    >
+      <path d="M12 2L2 19.5h20L12 2zm0 4.8l6.1 10.7H5.9L12 6.8zM12 10.5l-3 5.2h6l-3-5.2z" />
+    </svg>
+  );
+}
+
+export function OfficeIcon({ className = "", size = 28 }: BrandIconProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      xmlns="http://www.w3.org/2000/svg"
+      className={className}
+      aria-hidden="true"
+    >
+      <path d="M11.4 3H3v8.4h8.4V3zm9.6 0h-8.4v8.4H21V3zM11.4 12.6H3V21h8.4v-8.4zm9.6 0h-8.4V21H21v-8.4z" />
+    </svg>
+  );
+}
+
+export function KeyIcon({ className = "", size = 28 }: BrandIconProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      xmlns="http://www.w3.org/2000/svg"
+      className={className}
+      aria-hidden="true"
+    >
+      <circle cx="7.5" cy="15.5" r="5.5" />
+      <path d="m21 2-9.6 9.6" />
+      <path d="m15.5 7.5 3 3L22 7l-3-3" />
+    </svg>
+  );
+}
+
 export function BkashIcon({ className = "", size = 22 }: BrandIconProps) {
   return (
     <svg
@@ -115,32 +313,103 @@ export function NagadIcon({ className = "", size = 22 }: BrandIconProps) {
   );
 }
 
+export interface BrandIconPreset {
+  id: string;
+  label: string;
+  brand: string;
+  category?: string;
+}
+
+export const BRAND_ICON_PRESETS: BrandIconPreset[] = [
+  { id: "brand:gemini", label: "Google Gemini", brand: "gemini", category: "AI" },
+  { id: "brand:adobe", label: "Adobe Express / CC", brand: "adobe", category: "Design" },
+  { id: "brand:duolingo", label: "Duolingo Super", brand: "duolingo", category: "Learning" },
+  { id: "brand:pocket", label: "Pocket FM", brand: "pocket", category: "Audio" },
+  { id: "brand:chatgpt", label: "ChatGPT / OpenAI", brand: "chatgpt", category: "AI" },
+  { id: "brand:spotify", label: "Spotify Premium", brand: "spotify", category: "Music" },
+  { id: "brand:netflix", label: "Netflix UHD", brand: "netflix", category: "Streaming" },
+  { id: "brand:youtube", label: "YouTube Premium", brand: "youtube", category: "Video" },
+  { id: "brand:canva", label: "Canva Pro", brand: "canva", category: "Design" },
+  { id: "brand:telegram", label: "Telegram Premium", brand: "telegram", category: "Social" },
+  { id: "brand:prime", label: "Amazon Prime Video", brand: "prime", category: "Streaming" },
+  { id: "brand:apple", label: "Apple One / Music", brand: "apple", category: "Services" },
+  { id: "brand:discord", label: "Discord Nitro", brand: "discord", category: "Gaming" },
+  { id: "brand:nordvpn", label: "NordVPN", brand: "nordvpn", category: "Security" },
+  { id: "brand:office", label: "Microsoft 365", brand: "office", category: "Productivity" },
+  { id: "brand:key", label: "Activation Key (Default)", brand: "key", category: "Other" },
+];
+
 export function BrandLogoSquircle({
-  brand,
+  brand = "",
+  imageUrl,
   className = "",
   size = 56,
 }: {
-  brand: string;
+  brand?: string;
+  imageUrl?: string | null;
   className?: string;
   size?: number;
 }) {
-  const b = brand.toLowerCase();
-  let bg = "#EAF5EF";
-  let fg = "#0B7A4B";
+  const [imgError, setImgError] = useState(false);
+
+  // If imageUrl is a direct web/upload URL and hasn't errored
+  const isDirectUrl = Boolean(
+    imageUrl &&
+    !imgError &&
+    (imageUrl.startsWith("http://") ||
+     imageUrl.startsWith("https://") ||
+     imageUrl.startsWith("/api/") ||
+     imageUrl.startsWith("/") ||
+     imageUrl.startsWith("data:") ||
+     imageUrl.startsWith("blob:"))
+  );
+
+  if (isDirectUrl && imageUrl) {
+    return (
+      <div
+        style={{
+          width: size,
+          height: size,
+          borderRadius: `${Math.round(size * 0.32)}px`,
+        }}
+        className={`inline-grid place-items-center flex-shrink-0 overflow-hidden bg-slate-100 border border-slate-200/80 shadow-2xs transition-transform ${className}`}
+        aria-hidden="true"
+      >
+        <img
+          src={imageUrl}
+          alt=""
+          className="w-full h-full object-cover"
+          loading="lazy"
+          onError={() => setImgError(true)}
+        />
+      </div>
+    );
+  }
+
+  // Resolve icon brand key
+  let b = "";
+  if (imageUrl?.startsWith("brand:")) {
+    b = imageUrl.replace(/^brand:/, "").trim().toLowerCase();
+  } else {
+    b = `${imageUrl || ""} ${brand || ""}`.trim().toLowerCase();
+  }
+
+  let bg = "#FEF7E6";
+  let fg = "#D97706";
 
   if (b.includes("gemini")) {
     bg = "#E9EEFA";
     fg = "#1A73E8";
-  } else if (b.includes("adobe")) {
+  } else if (b.includes("adobe") || b.includes("express")) {
     bg = "#FDE8E8";
     fg = "#EB1000";
   } else if (b.includes("duolingo")) {
     bg = "#E6F8DA";
     fg = "#58CC02";
-  } else if (b.includes("pocket")) {
+  } else if (b.includes("pocket") || b.includes("fm")) {
     bg = "#FEECE2";
     fg = "#E65100";
-  } else if (b.includes("chatgpt") || b.includes("gpt")) {
+  } else if (b.includes("chatgpt") || b.includes("openai") || b.includes("gpt")) {
     bg = "#E4F4EA";
     fg = "#10A37F";
   } else if (b.includes("spotify")) {
@@ -149,7 +418,33 @@ export function BrandLogoSquircle({
   } else if (b.includes("netflix")) {
     bg = "#FDE8E8";
     fg = "#E50914";
+  } else if (b.includes("youtube")) {
+    bg = "#FEEBEB";
+    fg = "#FF0000";
+  } else if (b.includes("canva")) {
+    bg = "#E3F7F8";
+    fg = "#00C4CC";
+  } else if (b.includes("telegram")) {
+    bg = "#E7F3FB";
+    fg = "#24A1DE";
+  } else if (b.includes("prime") || b.includes("amazon")) {
+    bg = "#E6F2F8";
+    fg = "#00A8E1";
+  } else if (b.includes("apple")) {
+    bg = "#F1F3F5";
+    fg = "#1F2937";
+  } else if (b.includes("discord")) {
+    bg = "#ECEEFE";
+    fg = "#5865F2";
+  } else if (b.includes("nord") || b.includes("vpn")) {
+    bg = "#EAF1FA";
+    fg = "#4687FF";
+  } else if (b.includes("office") || b.includes("microsoft")) {
+    bg = "#EAF2FC";
+    fg = "#0078D4";
   }
+
+  const iconSize = Math.round(size * 0.52);
 
   return (
     <div
@@ -158,20 +453,54 @@ export function BrandLogoSquircle({
         height: size,
         backgroundColor: bg,
         color: fg,
-        borderRadius: "18px",
+        borderRadius: `${Math.round(size * 0.32)}px`,
       }}
       className={`inline-grid place-items-center flex-shrink-0 transition-transform ${className}`}
       aria-hidden="true"
     >
-      {b.includes("gemini") && <GeminiIcon size={Math.round(size * 0.52)} />}
-      {b.includes("adobe") && <AdobeIcon size={Math.round(size * 0.5)} />}
-      {b.includes("duolingo") && <DuolingoIcon size={Math.round(size * 0.52)} />}
-      {b.includes("pocket") && <PocketFmIcon size={Math.round(size * 0.5)} />}
-      {!b.includes("gemini") && !b.includes("adobe") && !b.includes("duolingo") && !b.includes("pocket") && (
-        <span className="font-extrabold text-base tracking-tight uppercase">
-          {brand.slice(0, 2)}
-        </span>
-      )}
+      {b.includes("gemini") && <GeminiIcon size={iconSize} />}
+      {(b.includes("adobe") || b.includes("express")) && <AdobeIcon size={Math.round(size * 0.5)} />}
+      {b.includes("duolingo") && <DuolingoIcon size={iconSize} />}
+      {(b.includes("pocket") || b.includes("fm")) && <PocketFmIcon size={Math.round(size * 0.5)} />}
+      {(b.includes("chatgpt") || b.includes("openai") || b.includes("gpt")) && <ChatGptIcon size={iconSize} />}
+      {b.includes("spotify") && <SpotifyIcon size={iconSize} />}
+      {b.includes("netflix") && <NetflixIcon size={iconSize} />}
+      {b.includes("youtube") && <YouTubeIcon size={iconSize} />}
+      {b.includes("canva") && <CanvaIcon size={iconSize} />}
+      {b.includes("telegram") && <TelegramIcon size={iconSize} />}
+      {(b.includes("prime") || b.includes("amazon")) && <PrimeVideoIcon size={iconSize} />}
+      {b.includes("apple") && <AppleIcon size={iconSize} />}
+      {b.includes("discord") && <DiscordIcon size={iconSize} />}
+      {(b.includes("nord") || b.includes("vpn")) && <NordVpnIcon size={iconSize} />}
+      {(b.includes("office") || b.includes("microsoft")) && <OfficeIcon size={iconSize} />}
+      {b.includes("key") && <KeyIcon size={Math.round(size * 0.5)} />}
+      {!b.includes("gemini") &&
+        !b.includes("adobe") &&
+        !b.includes("express") &&
+        !b.includes("duolingo") &&
+        !b.includes("pocket") &&
+        !b.includes("fm") &&
+        !b.includes("chatgpt") &&
+        !b.includes("openai") &&
+        !b.includes("gpt") &&
+        !b.includes("spotify") &&
+        !b.includes("netflix") &&
+        !b.includes("youtube") &&
+        !b.includes("canva") &&
+        !b.includes("telegram") &&
+        !b.includes("prime") &&
+        !b.includes("amazon") &&
+        !b.includes("apple") &&
+        !b.includes("discord") &&
+        !b.includes("nord") &&
+        !b.includes("vpn") &&
+        !b.includes("office") &&
+        !b.includes("microsoft") &&
+        !b.includes("key") && (
+          <span className="font-extrabold text-base tracking-tight uppercase">
+            {(brand || "AZ").slice(0, 2)}
+          </span>
+        )}
     </div>
   );
 }

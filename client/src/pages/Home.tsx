@@ -305,7 +305,7 @@ export default function Home() {
                           color: "var(--bottle)",
                         }}
                       >
-                        <BrandLogoSquircle brand={qp.brand} size={22} />
+                        <BrandLogoSquircle brand={qp.brand} imageUrl={qp.variant.imageUrl} size={22} />
                         <span>{qp.name}</span>
                         <span className="font-extrabold text-emerald-700">
                           {formatMoney(qp.minPrice)}
