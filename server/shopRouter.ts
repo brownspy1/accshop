@@ -3,7 +3,7 @@ import { customAlphabet } from "nanoid";
 import { TRPCError } from "@trpc/server";
 import { and, desc, eq, gt, inArray, notInArray, or, sql } from "drizzle-orm";
 import { z } from "zod";
-import { activationServices, customerAccounts, orderItems, orders, providerCredentials, storeSettings } from "../drizzle/schema";
+import { activationServices, customerAccounts, customProductInventory, orderItems, orders, providerCredentials, storeSettings } from "../drizzle/schema";
 import { AcczoneError, buyActivation, getBalance, getHistory, getServices, hasApiKey, testAndSaveApiKey } from "./acczone";
 import { CouponShopsError, createCouponOrder, getCouponBalance, getCouponServices, retrieveCouponOrder, verifyAndSaveCouponShopsKey } from "./couponshops";
 import { BotResellerError, createBotResellerOrder, getBotResellerBalance, normalizeBotResellerUrl, retrieveBotResellerOrder, testBotResellerConnection } from "./botReseller";
@@ -20,6 +20,7 @@ import { setDynamicAdminEmail } from "./_core/adminAllowlist";
 import { hashAdminPassword, verifyAdminPassword, verifyFallbackAdminSecret } from "./adminAuth";
 import { adminProcedure, publicProcedure, router } from "./_core/trpc";
 import { ensureProductThumbnailsInDb, getProductThumbnail } from "./productThumbnails";
+import { createCustomProduct, addBulkCredentialsToVault, listCustomProductsWithStats, listVaultItems, deleteVaultItem, returnVaultItemToStock, updateVaultItem } from "./customInventory";
 
 const newOrderNo = customAlphabet("23456789ABCDEFGHJKLMNPQRSTUVWXYZ", 13);
 const defaultSettings = {
@@ -312,7 +313,9 @@ export const shopRouter = router({
         const tiers = purchasableTiers.map(({ minQuantity, maxQuantity }) => ({ minQuantity, maxQuantity: Math.min(maxQuantity, available) }));
         const maxAllowedQuantity = row.provider === "couponshops"
           ? Math.min(100, available, Math.max(...purchasableTiers.map(tier => tier.maxQuantity)))
-          : Math.min(10, available);
+          : row.provider === "custom"
+            ? Math.min(50, available)
+            : Math.min(10, available);
         const { supplierPrice: _cost, supplierCurrency: _currency, providerRate: _rate, providerServiceId: _providerId,
           provider: _provider, pricingTiers: _tiers, priceMarkupRatio: _markupRatio, reservedStock, stock, lastStockSyncedAt, ...item } = row;
         const stockAge = lastStockSyncedAt ? Date.now() - new Date(lastStockSyncedAt).getTime() : Number.POSITIVE_INFINITY;
@@ -323,7 +326,7 @@ export const shopRouter = router({
           customDescription: row.customDescription,
           stock: Math.max(0, stock - reservedStock),
           stockSyncedAt: lastStockSyncedAt,
-          stockFresh: stockAge >= 0 && stockAge <= SUPPLIER_STOCK_MAX_AGE_MS,
+          stockFresh: row.provider === "custom" ? true : (stockAge >= 0 && stockAge <= SUPPLIER_STOCK_MAX_AGE_MS),
           quantityTiers: tiers,
           maxAllowedQuantity,
         }];
@@ -379,7 +382,10 @@ export const shopRouter = router({
       const wanted = Array.from(merged, ([serviceKey, quantity]) => ({ serviceKey, quantity }));
       const candidateProviders = await db.select({ provider: activationServices.provider }).from(activationServices)
         .where(inArray(activationServices.serviceKey, wanted.map(item => item.serviceKey)));
-      await refreshCatalogIfNeeded(candidateProviders.map(row => row.provider));
+      const externalProviders = candidateProviders.map(row => row.provider).filter(p => p !== "custom");
+      if (externalProviders.length) {
+        await refreshCatalogIfNeeded(externalProviders);
+      }
       const orderNo = `AZ-${newOrderNo()}`;
       try {
         const created = await db.transaction(async tx => {
@@ -392,14 +398,15 @@ export const shopRouter = router({
               throw new Error("কার্টের কোনো service এখন বিক্রির জন্য নেই বা পর্যাপ্ত stock নেই।");
             }
             if (product.priceReviewRequired === 1) throw new Error("Supplier cost/currency বদলেছে; Admin দাম যাচাই না করা পর্যন্ত এই service order করা যাবে না।");
-            if (!product.lastStockSyncedAt || Date.now() - new Date(product.lastStockSyncedAt).getTime() > SUPPLIER_STOCK_MAX_AGE_MS) {
-              throw new Error("Supplier stock এখনো fresh নয়। Cart refresh করে কিছুক্ষণ পর আবার চেষ্টা করুন।");
+            if (product.provider !== "custom") {
+              if (!product.lastStockSyncedAt || Date.now() - new Date(product.lastStockSyncedAt).getTime() > SUPPLIER_STOCK_MAX_AGE_MS) {
+                throw new Error("Supplier stock এখনো fresh নয়। Cart refresh করে কিছুক্ষণ পর আবার চেষ্টা করুন।");
+              }
             }
             if (product.provider === "couponshops" && (!product.providerServiceId || !couponTierForQuantity(product, item.quantity))) {
               throw new Error("CouponShops service-এর quantity provider pricing slab-এর সাথে মিলছে না। Checkout-এ allowed quantity বেছে নিন।");
             }
             if (product.provider === "acczone" && item.quantity > 10) throw new Error("AccZone service-এর সর্বোচ্চ quantity 10।");
-            if (!["acczone", "couponshops"].includes(product.provider)) throw new Error("এই service-এর supplier configuration unsupported; admin-এর সাথে যোগাযোগ করুন।");
             return { product, quantity: item.quantity, tier: product.provider === "couponshops" ? couponTierForQuantity(product, item.quantity) : undefined };
           });
           for (const { product, quantity } of lines) {
@@ -938,6 +945,54 @@ export const shopRouter = router({
         }
       }),
     }),
+    customInventory: router({
+      createProduct: adminProcedure.input(z.object({
+        name: z.string().trim().min(2, "প্রোডাক্টের নাম কমপক্ষে ২ অক্ষরের হতে হবে").max(255),
+        description: z.string().trim().max(2000).optional(),
+        customDescription: z.string().trim().max(2000).optional(),
+        retailPrice: z.number().positive("সঠিক বিক্রয়মূল্য দিন"),
+        imageUrl: z.string().trim().max(2048).optional(),
+        bulkCredentials: z.string().optional(),
+      })).mutation(async ({ input }) => {
+        return createCustomProduct(input);
+      }),
+      addBulk: adminProcedure.input(z.object({
+        serviceKey: z.string().trim().min(1),
+        bulkCredentials: z.string().min(1, "কমপক্ষে একটি অ্যাকাউন্ট বা কোড দিন"),
+        notes: z.string().trim().max(500).optional(),
+      })).mutation(async ({ input }) => {
+        return addBulkCredentialsToVault(input);
+      }),
+      listProducts: adminProcedure.query(async () => {
+        return listCustomProductsWithStats();
+      }),
+      listItems: adminProcedure.input(z.object({
+        serviceKey: z.string().optional(),
+        status: z.string().optional(),
+        search: z.string().optional(),
+        page: z.number().int().min(1).default(1),
+        limit: z.number().int().min(5).max(100).default(20),
+      })).query(async ({ input }) => {
+        return listVaultItems(input);
+      }),
+      deleteItem: adminProcedure.input(z.object({
+        id: z.number().int().positive(),
+      })).mutation(async ({ input }) => {
+        return deleteVaultItem(input.id);
+      }),
+      returnToStock: adminProcedure.input(z.object({
+        id: z.number().int().positive(),
+      })).mutation(async ({ input }) => {
+        return returnVaultItemToStock(input.id);
+      }),
+      updateItem: adminProcedure.input(z.object({
+        id: z.number().int().positive(),
+        credentialData: z.string().trim().min(1, "অ্যাকাউন্ট বা কোডের তথ্য খালি রাখা যাবে না"),
+        notes: z.string().trim().max(500).optional(),
+      })).mutation(async ({ input }) => {
+        return updateVaultItem(input);
+      }),
+    }),
     api: router({
       status: adminProcedure.query(async () => ({ configured: await hasApiKey() })),
       configure: adminProcedure.input(z.object({ apiKey: z.string().trim().min(8).max(2048) })).mutation(async ({ input }) => {
@@ -1010,6 +1065,7 @@ export const shopRouter = router({
         const preflightLines = await db.select({ provider: orderItems.provider }).from(orderItems).where(eq(orderItems.orderId, input.orderId));
         if (!preflightLines.length) throw new Error("Order-এ কোনো item পাওয়া যায়নি।");
         for (const provider of new Set(preflightLines.map(line => line.provider))) {
+          if (provider === "custom") continue;
           if (!await hasProviderApiKey(provider)) {
             throw new Error(`${provider} API key verified নয়; fulfillment শুরু করার আগে Admin Connections-এ provider configure করুন।`);
           }
@@ -1040,7 +1096,7 @@ export const shopRouter = router({
           }
           const preparedLines = [];
           for (const line of retryLines) {
-            if (line.provider === "acczone") {
+            if (line.provider === "acczone" || line.provider === "custom") {
               preparedLines.push(line);
               continue;
             }
@@ -1066,7 +1122,75 @@ export const shopRouter = router({
           if (line.fulfillmentState === "fulfilled") continue;
           await db.update(orderItems).set({ fulfillmentState: "processing", updatedAt: new Date() }).where(eq(orderItems.id, line.id));
           try {
-            if (line.provider === "couponshops") {
+            if (line.provider === "custom") {
+              const availableItems = await db.select().from(customProductInventory)
+                .where(and(
+                  eq(customProductInventory.serviceKey, line.serviceKey),
+                  eq(customProductInventory.status, "available")
+                ))
+                .limit(line.quantity);
+
+              if (availableItems.length < line.quantity) {
+                state = "fulfillment_failed";
+                await db.update(orderItems).set({
+                  fulfillmentState: "failed",
+                  providerStatus: "failed",
+                  providerMessage: `পর্যাপ্ত স্টক নেই। প্রয়োজন ${line.quantity}টি, কিন্তু স্টকে আছে ${availableItems.length}টি। Vault-এ নতুন অ্যাকাউন্ট/কোড যোগ করুন।`,
+                  updatedAt: new Date(),
+                }).where(eq(orderItems.id, line.id));
+                break;
+              }
+
+              const assignedIds = availableItems.map(item => item.id);
+              const now = new Date();
+
+              await db.transaction(async tx => {
+                await tx.update(customProductInventory).set({
+                  status: "sold",
+                  orderId: input.orderId,
+                  orderItemId: line.id,
+                  soldToEmail: prepared.customerEmail || undefined,
+                  soldAt: now,
+                  updatedAt: now,
+                }).where(inArray(customProductInventory.id, assignedIds));
+
+                const codes = availableItems.map(item => ({
+                  id: `vault-${item.id}`,
+                  serviceKey: line.serviceKey,
+                  codeType: "account",
+                  codeValue: item.credentialData,
+                  usedAt: now.toISOString(),
+                }));
+
+                const [remaining] = await tx.select({
+                  count: sql<number>`count(*)::int`,
+                }).from(customProductInventory)
+                  .where(and(
+                    eq(customProductInventory.serviceKey, line.serviceKey),
+                    eq(customProductInventory.status, "available")
+                  ));
+
+                const remainingStock = remaining?.count ?? 0;
+
+                await tx.update(activationServices).set({
+                  stock: remainingStock,
+                  reservedStock: sql`GREATEST(${activationServices.reservedStock} - ${line.quantity}, 0)`,
+                  updatedAt: now,
+                }).where(eq(activationServices.serviceKey, line.serviceKey));
+
+                await tx.update(orderItems).set({
+                  fulfillmentState: "fulfilled",
+                  providerStatus: "completed",
+                  providerOrderId: `VAULT-${input.orderId}-${line.id}`,
+                  resultCodes: JSON.stringify(codes),
+                  providerMessage: null,
+                  updatedAt: now,
+                }).where(eq(orderItems.id, line.id));
+              });
+
+              completedCount += 1;
+              continue;
+            } else if (line.provider === "couponshops") {
               if (!line.providerServiceId || !line.providerClientOrderId) throw new CouponShopsError("CouponShops idempotent order identity is missing; contact the store admin before retrying.");
               const order = await createCouponOrder(line.providerServiceId, line.quantity, line.providerClientOrderId);
               const codes = couponCodes(order, line.serviceKey);

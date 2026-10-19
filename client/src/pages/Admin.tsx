@@ -3,15 +3,16 @@ import { BrandLogoSquircle, BRAND_ICON_PRESETS } from "@/components/BrandLogos";
 import { startLogin } from "@/const";
 import { trpc } from "@/lib/trpc";
 import { formatMoney, orderStatusLabels } from "@/lib/shop";
-import { Activity, AlertTriangle, ArrowDownRight, ArrowLeft, ArrowRight, BadgeCheck, Banknote, Bot, Boxes, Check, CheckCircle2, ChevronDown, ChevronRight, CircleDollarSign, ClipboardList, Clock3, CreditCard, ExternalLink, Eye, EyeOff, FileText, Globe, ImagePlus, KeyRound, LayoutDashboard, LoaderCircle, LogOut, Mail, PackageCheck, Plus, RefreshCw, Save, Search, Settings2, ShieldCheck, ShoppingBag, Sparkles, Store, Trash2, TrendingUp, Wallet, X, Zap } from "lucide-react";
+import { Activity, AlertTriangle, ArrowDownRight, ArrowLeft, ArrowRight, BadgeCheck, Banknote, Bot, Boxes, Check, CheckCircle2, ChevronDown, ChevronRight, CircleDollarSign, ClipboardList, Clock3, Copy, CreditCard, Database, ExternalLink, Eye, EyeOff, FileText, Globe, ImagePlus, KeyRound, LayoutDashboard, LoaderCircle, LogOut, Mail, PackageCheck, Plus, RefreshCw, RotateCcw, Save, Search, Settings2, ShieldCheck, ShoppingBag, Sparkles, Store, Trash2, TrendingUp, Wallet, X, Zap } from "lucide-react";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { Link } from "wouter";
 import { toast } from "sonner";
 
-type AdminTab = "overview" | "services" | "orders" | "connection" | "history" | "settings";
+type AdminTab = "overview" | "services" | "vault" | "orders" | "connection" | "history" | "settings";
 const navItems: { id: AdminTab; label: string; icon: typeof LayoutDashboard }[] = [
   { id: "overview", label: "Overview", icon: LayoutDashboard },
   { id: "services", label: "Services & prices", icon: Boxes },
+  { id: "vault", label: "Stock Vault (নিজস্ব স্টক)", icon: Database },
   { id: "orders", label: "Orders", icon: ClipboardList },
   { id: "connection", label: "API connection", icon: Activity },
   { id: "history", label: "Activation history", icon: PackageCheck },
@@ -87,7 +88,7 @@ export default function Admin() {
   return <div className="admin-shell">
     <aside className="admin-sidebar"><Link href="/" className="admin-logo"><BrandMark compact /></Link><div className="admin-label">STORE MANAGEMENT</div><nav>{navItems.map(item => <button type="button" key={item.id} className={tab === item.id ? "admin-nav-item active" : "admin-nav-item"} onClick={() => setTab(item.id)}><item.icon size={17} /><span>{item.label}</span>{item.id === "orders" && <OrderBadge />}</button>)}</nav><div className="sidebar-bottom"><div className="admin-identity"><div className="admin-avatar">{user.name?.slice(0, 1) || "A"}</div><div><b>{user.name || "Store admin"}</b><small>{user.email}</small></div></div><button className="logout-button" onClick={() => logout.mutate()} disabled={logout.isPending}><LogOut size={15} /> Sign out</button></div></aside>
     <main className="admin-main"><header className="admin-topbar"><div className="admin-breadcrumb"><Link href="/">Store</Link><ChevronRight size={14} /><b>{navItems.find(item => item.id === tab)?.label}</b></div><div className="admin-top-actions"><Link href="/" className="view-store"><ExternalLink size={15} /> View storefront</Link><span className="secure-tag"><ShieldCheck size={13} /> SECURE SESSION</span></div></header>
-      <div className="admin-content">{tab === "overview" && <Overview onSelect={setTab} />}{tab === "services" && <ServicesSection />}{tab === "orders" && <OrdersSection />}{tab === "connection" && <ConnectionSection />}{tab === "history" && <HistorySection />}{tab === "settings" && <SettingsSection />}</div>
+      <div className="admin-content">{tab === "overview" && <Overview onSelect={setTab} />}{tab === "services" && <ServicesSection />}{tab === "vault" && <VaultSection />}{tab === "orders" && <OrdersSection />}{tab === "connection" && <ConnectionSection />}{tab === "history" && <HistorySection />}{tab === "settings" && <SettingsSection />}</div>
     </main>
   </div>;
 }
@@ -564,6 +565,843 @@ function ServiceRow({ item }: { item: ServiceRowInput }) {
     {needsPriceReview && <label className="price-review-confirm"><input type="checkbox" checked={reviewConfirmed} onChange={event => setReviewConfirmed(event.target.checked)} /><span>Supplier cost, currency ও retail price যাচাই করেছি</span></label>}
     <button className="icon-save" title={needsPriceReview ? "Save price and mark reviewed" : "Save service"} onClick={() => save.mutate({ serviceKey: item.serviceKey, retailPrice: Number(price || 0), isListed: listed, confirmPriceReview: reviewConfirmed, customDescription: customDesc.trim() || null, imageUrl: imageUrl.trim() || null })} disabled={save.isPending || (needsPriceReview && listed && !reviewConfirmed)}><Save size={15} /></button>
   </div>;
+}
+
+function VaultSection() {
+  const utils = trpc.useUtils();
+  const [selectedProduct, setSelectedProduct] = useState<string>("all");
+  const [selectedStatus, setSelectedStatus] = useState<"all" | "available" | "reserved" | "sold">("all");
+  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const [revealedIds, setRevealedIds] = useState<Record<number, boolean>>({});
+
+  // Modals state
+  const [createProductOpen, setCreateProductOpen] = useState(false);
+  const [addBulkOpen, setAddBulkOpen] = useState(false);
+  const [bulkServiceKey, setBulkServiceKey] = useState("");
+
+  // Queries
+  const productsQuery = trpc.shop.admin.customInventory.listProducts.useQuery();
+  const itemsQuery = trpc.shop.admin.customInventory.listItems.useQuery({
+    serviceKey: selectedProduct === "all" ? undefined : selectedProduct,
+    status: selectedStatus,
+    search: search.trim() || undefined,
+    page,
+    limit: 50,
+  });
+
+  // Mutations
+  const deleteItem = trpc.shop.admin.customInventory.deleteItem.useMutation({
+    onSuccess: () => {
+      toast.success("আইটেম ডিলিট করা হয়েছে");
+      void utils.shop.admin.customInventory.listItems.invalidate();
+      void utils.shop.admin.customInventory.listProducts.invalidate();
+      void utils.shop.admin.services.list.invalidate();
+      void utils.shop.catalog.list.invalidate();
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  const returnToStock = trpc.shop.admin.customInventory.returnToStock.useMutation({
+    onSuccess: () => {
+      toast.success("আইটেম পুনরায় সচল স্টকে যুক্ত করা হয়েছে!");
+      void utils.shop.admin.customInventory.listItems.invalidate();
+      void utils.shop.admin.customInventory.listProducts.invalidate();
+      void utils.shop.admin.services.list.invalidate();
+      void utils.shop.catalog.list.invalidate();
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  const refreshAll = () => {
+    void utils.shop.admin.customInventory.listProducts.invalidate();
+    void utils.shop.admin.customInventory.listItems.invalidate();
+  };
+
+  const products = productsQuery.data || [];
+  const totalProducts = products.length;
+  const totalAvailable = products.reduce((acc, p) => acc + (p.availableCount || 0), 0);
+  const totalSold = products.reduce((acc, p) => acc + (p.soldCount || 0), 0);
+  const totalUploaded = products.reduce((acc, p) => acc + (p.totalUploaded || 0), 0);
+
+  const toggleReveal = (id: number) => {
+    setRevealedIds(prev => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const copyCredential = (text: string) => {
+    void navigator.clipboard.writeText(text);
+    toast.success("Credential কপি হয়েছে!");
+  };
+
+  const openBulkModalFor = (key: string) => {
+    setBulkServiceKey(key);
+    setAddBulkOpen(true);
+  };
+
+  return (
+    <>
+      <div className="admin-heading">
+        <div>
+          <div className="eyebrow">DIGITAL INVENTORY & VAULT <span className="heading-line" /></div>
+          <h1>Stock Vault (নিজস্ব স্টক)</h1>
+          <p>আপনার নিজস্ব অ্যাকাউন্ট (user:pass), ইনভাইট/রিডিম লিঙ্ক বা অ্যাক্টিভেশন কোড বাল্ক আপলোড করুন। কাস্টমার অর্ডার করার সাথে সাথে স্বয়ংক্রিয়ভাবে ইমেইলে চলে যাবে এবং ভল্ট থেকে সোল্ড লিস্টে সরবে।</p>
+        </div>
+        <div className="sync-actions">
+          <button
+            type="button"
+            className="button button-primary"
+            onClick={() => setCreateProductOpen(true)}
+          >
+            <Plus size={15} /> নতুন নিজস্ব প্রোডাক্ট
+          </button>
+          <button
+            type="button"
+            className="button button-light"
+            onClick={() => {
+              if (products.length > 0) {
+                setBulkServiceKey(selectedProduct !== "all" ? selectedProduct : products[0].serviceKey);
+              }
+              setAddBulkOpen(true);
+            }}
+            disabled={products.length === 0}
+          >
+            <Database size={15} /> বাল্ক স্টক যোগ করুন
+          </button>
+          <button
+            type="button"
+            className="button button-light"
+            onClick={refreshAll}
+            title="রিফ্রেশ"
+          >
+            <RefreshCw size={14} className={productsQuery.isFetching || itemsQuery.isFetching ? "spin" : ""} /> রিফ্রেশ
+          </button>
+        </div>
+      </div>
+
+      {/* Snapshot Cards */}
+      <div className="stats-grid">
+        <article className="stat-card">
+          <div className="stat-icon mint"><Boxes size={18} /></div>
+          <span>মোট নিজস্ব প্রোডাক্ট</span>
+          <strong>{productsQuery.isLoading ? "—" : totalProducts}</strong>
+          <small>কাস্টম সার্ভিস ক্যাটালগ</small>
+        </article>
+        <article className="stat-card">
+          <div className="stat-icon blue"><PackageCheck size={18} /></div>
+          <span>বর্তমানে স্টকে আছে (Available)</span>
+          <strong>{productsQuery.isLoading ? "—" : totalAvailable}</strong>
+          <small>বিক্রির জন্য প্রস্তুত ক্রেডেনশিয়াল</small>
+        </article>
+        <article className="stat-card">
+          <div className="stat-icon violet"><CheckCircle2 size={18} /></div>
+          <span>বিক্রি হয়েছে (Delivered Sold)</span>
+          <strong>{productsQuery.isLoading ? "—" : totalSold}</strong>
+          <small>অর্ডারে স্বয়ংক্রিয়ভাবে ডেলিভার্ড</small>
+        </article>
+        <article className="stat-card">
+          <div className="stat-icon amber"><KeyRound size={18} /></div>
+          <span>সর্বমোট আপলোডকৃত</span>
+          <strong>{productsQuery.isLoading ? "—" : totalUploaded}</strong>
+          <small>আজীবন ভল্ট অ্যাকাউন্ট হিস্ট্রি</small>
+        </article>
+      </div>
+
+      {/* Custom Products List Card */}
+      <div className="admin-panel" style={{ padding: "18px 20px", marginBottom: "22px" }}>
+        <div className="panel-top" style={{ marginBottom: "14px" }}>
+          <div>
+            <h2 style={{ fontSize: "16px", fontWeight: 700, margin: 0 }}>নিজস্ব প্রোডাক্ট ও স্টক সামারি ({products.length}টি)</h2>
+            <p style={{ margin: "2px 0 0", fontSize: "12px", color: "var(--text-soft, #52615b)" }}>
+              প্রতিটি নিজস্ব প্রোডাক্টের লাইভ স্টক সরাসরি ভল্টের সচল অ্যাকাউন্ট সংখ্যার সমান থাকে।
+            </p>
+          </div>
+          <button
+            type="button"
+            className="button button-sm button-light"
+            onClick={() => setCreateProductOpen(true)}
+          >
+            <Plus size={13} /> নতুন প্রোডাক্ট
+          </button>
+        </div>
+
+        {productsQuery.isLoading ? (
+          <PanelLoading />
+        ) : products.length === 0 ? (
+          <div className="empty-admin" style={{ padding: "28px 16px" }}>
+            <KeyRound size={26} />
+            <b>এখনো কোনো নিজস্ব প্রোডাক্ট তৈরি করা হয়নি</b>
+            <span>আপনার অ্যাকাউন্ট বা রিডিম লিঙ্ক বিক্রির জন্য প্রথমে "নতুন নিজস্ব প্রোডাক্ট" তৈরি করুন।</span>
+            <button
+              type="button"
+              className="button button-primary"
+              style={{ marginTop: "12px" }}
+              onClick={() => setCreateProductOpen(true)}
+            >
+              <Plus size={14} /> প্রথম প্রোডাক্ট তৈরি করুন
+            </button>
+          </div>
+        ) : (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: "12px" }}>
+            {products.map((prod) => (
+              <div
+                key={prod.serviceKey}
+                style={{
+                  border: selectedProduct === prod.serviceKey ? "2px solid #0b765c" : "1px solid var(--line, #e2ece6)",
+                  borderRadius: "14px",
+                  padding: "14px",
+                  background: selectedProduct === prod.serviceKey ? "#f3faf6" : "#ffffff",
+                  display: "flex",
+                  flexDirection: "column",
+                  justifyContent: "space-between",
+                  gap: "12px",
+                  transition: "all 0.15s ease",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "flex-start", gap: "12px" }}>
+                  <BrandLogoSquircle
+                    brand={prod.serviceKey.replace("custom_", "")}
+                    imageUrl={prod.imageUrl || undefined}
+                    size={42}
+                  />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "6px" }}>
+                      <b style={{ fontSize: "14px", fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={prod.name}>
+                        {prod.name}
+                      </b>
+                      <span className={`status-chip ${prod.isListed ? "status-fulfilled" : "status-cancelled"}`} style={{ fontSize: "10px", padding: "2px 7px" }}>
+                        {prod.isListed ? "Live Store" : "Unlisted"}
+                      </span>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "baseline", gap: "6px", marginTop: "2px" }}>
+                      <span style={{ fontSize: "15px", fontWeight: 800, color: "var(--padma, #0b765c)" }}>
+                        ৳{prod.retailPrice}
+                      </span>
+                      <small style={{ color: "var(--text-soft, #718096)", fontSize: "11px" }}>বিক্রয়মূল্য</small>
+                    </div>
+                    {prod.customDescription && (
+                      <p style={{ margin: "4px 0 0", fontSize: "11px", color: "#64748b", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {prod.customDescription}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", borderTop: "1px solid #edf2f7", paddingTop: "10px" }}>
+                  <div style={{ display: "flex", gap: "8px", fontSize: "11px" }}>
+                    <span style={{ color: "#0b765c", fontWeight: 700 }}>
+                      ● {prod.availableCount} স্টকে
+                    </span>
+                    <span style={{ color: "#6b21a8", fontWeight: 600 }}>
+                      ✔ {prod.soldCount} বিক্রি
+                    </span>
+                  </div>
+                  <div style={{ display: "flex", gap: "6px" }}>
+                    <button
+                      type="button"
+                      className="button button-sm button-light"
+                      style={{ fontSize: "11px", padding: "4px 8px" }}
+                      onClick={() => openBulkModalFor(prod.serviceKey)}
+                      title="এই প্রোডাক্টে নতুন অ্যাকাউন্ট যোগ করুন"
+                    >
+                      <Plus size={12} /> স্টক যোগ
+                    </button>
+                    <button
+                      type="button"
+                      className={`button button-sm ${selectedProduct === prod.serviceKey ? "button-primary" : "button-light"}`}
+                      style={{ fontSize: "11px", padding: "4px 8px" }}
+                      onClick={() => {
+                        setSelectedProduct(selectedProduct === prod.serviceKey ? "all" : prod.serviceKey);
+                        setPage(1);
+                      }}
+                    >
+                      {selectedProduct === prod.serviceKey ? "ফিল্টার সরান" : "আইটেম ভিউ"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Stock Vault Explorer Toolbar */}
+      <div className="admin-toolbar" style={{ flexWrap: "wrap", gap: "10px", marginBottom: "14px" }}>
+        <div className="toolbar-search" style={{ minWidth: "240px", flex: 1 }}>
+          <Search size={15} />
+          <input
+            value={search}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setPage(1);
+            }}
+            placeholder="ক্রেডেনশিয়াল টেক্সট, কাস্টমার ইমেইল বা অর্ডার নম্বর দিয়ে খুঁজুন..."
+          />
+        </div>
+
+        <div className="admin-filter-group">
+          {/* Product Filter dropdown */}
+          <select
+            value={selectedProduct}
+            onChange={(e) => {
+              setSelectedProduct(e.target.value);
+              setPage(1);
+            }}
+            className="admin-password-input"
+            style={{ padding: "6px 12px", width: "auto", fontSize: "12px", height: "36px" }}
+          >
+            <option value="all">সব প্রোডাক্ট ({products.length}টি)</option>
+            {products.map((p) => (
+              <option key={p.serviceKey} value={p.serviceKey}>
+                {p.name} ({p.availableCount} স্টকে)
+              </option>
+            ))}
+          </select>
+
+          {/* Status Filter Chips */}
+          <div className="chip-selector" role="group">
+            <button
+              type="button"
+              className={`admin-chip ${selectedStatus === "all" ? "active" : ""}`}
+              onClick={() => { setSelectedStatus("all"); setPage(1); }}
+            >
+              সব আইটেম
+            </button>
+            <button
+              type="button"
+              className={`admin-chip ${selectedStatus === "available" ? "active" : ""}`}
+              onClick={() => { setSelectedStatus("available"); setPage(1); }}
+            >
+              Available (স্টকে আছে)
+            </button>
+            <button
+              type="button"
+              className={`admin-chip ${selectedStatus === "sold" ? "active" : ""}`}
+              onClick={() => { setSelectedStatus("sold"); setPage(1); }}
+            >
+              Sold (বিক্রি হয়েছে)
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Items Table Panel */}
+      <div className="admin-panel table-panel">
+        <div
+          className="table-head"
+          style={{
+            gridTemplateColumns: "1.4fr 2fr 1fr 1.6fr 0.8fr",
+            minWidth: "750px",
+            display: "grid",
+            padding: "10px 16px",
+            fontSize: "11px",
+            fontWeight: 700,
+            textTransform: "uppercase",
+            color: "var(--text-soft, #52615b)",
+            borderBottom: "1px solid var(--line, #e2ece6)",
+          }}
+        >
+          <span>Product</span>
+          <span>Credential / Account / Link</span>
+          <span>Status</span>
+          <span>Details / History</span>
+          <span style={{ textAlign: "right" }}>Actions</span>
+        </div>
+
+        {itemsQuery.isLoading ? (
+          <PanelLoading />
+        ) : !itemsQuery.data?.items.length ? (
+          <div className="empty-admin" style={{ padding: "36px 16px" }}>
+            <Database size={24} />
+            <b>কোনো আইটেম পাওয়া যায়নি</b>
+            <span>
+              {selectedStatus === "sold"
+                ? "এখনো কোনো অ্যাকাউন্ট বিক্রি হয়নি।"
+                : "স্টকে অ্যাকাউন্ট যোগ করতে উপরে '+ বাল্ক স্টক যোগ করুন' বাটনে ক্লিক করুন।"}
+            </span>
+          </div>
+        ) : (
+          itemsQuery.data.items.map((item) => {
+            const isRevealed = Boolean(revealedIds[item.id]);
+            return (
+              <div
+                key={item.id}
+                style={{
+                  gridTemplateColumns: "1.4fr 2fr 1fr 1.6fr 0.8fr",
+                  minWidth: "750px",
+                  display: "grid",
+                  alignItems: "center",
+                  padding: "12px 16px",
+                  borderBottom: "1px solid #f0f4f2",
+                  fontSize: "13px",
+                  gap: "10px",
+                }}
+              >
+                {/* Product Name */}
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <BrandLogoSquircle
+                    brand={item.serviceKey.replace("custom_", "")}
+                    size={28}
+                  />
+                  <div>
+                    <b style={{ fontSize: "13px", display: "block" }}>{item.serviceName || item.serviceKey}</b>
+                    <small style={{ color: "#718096", fontSize: "10px" }}>ID #{item.id}</small>
+                  </div>
+                </div>
+
+                {/* Credential Data (Masked / Unmasked) */}
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <div className="vault-secret-box" title={isRevealed ? item.credentialData : "গোপনীয় ক্রেডেনশিয়াল"}>
+                    <span className="vault-secret-text">
+                      {isRevealed
+                        ? item.credentialData
+                        : "••••••••••••••••••••••••"}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    className="vault-eye-btn"
+                    onClick={() => toggleReveal(item.id)}
+                    title={isRevealed ? "ক্রেডেনশিয়াল লুকান" : "ক্রেডেনশিয়াল দেখুন"}
+                  >
+                    {isRevealed ? <EyeOff size={14} /> : <Eye size={14} />}
+                  </button>
+                  <button
+                    type="button"
+                    className="vault-copy-btn"
+                    onClick={() => copyCredential(item.credentialData)}
+                    title="ক্লিপবোর্ডে কপি করুন"
+                  >
+                    <Copy size={14} />
+                  </button>
+                </div>
+
+                {/* Status Badge */}
+                <div>
+                  {item.status === "available" && (
+                    <span className="status-chip status-fulfilled" style={{ fontSize: "11px", display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                      <CheckCircle2 size={12} /> Available
+                    </span>
+                  )}
+                  {item.status === "sold" && (
+                    <span className="status-chip" style={{ background: "#ede9fe", color: "#6b21a8", border: "1px solid #ddd6fe", fontSize: "11px", display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                      <BadgeCheck size={12} /> Sold
+                    </span>
+                  )}
+                  {item.status === "reserved" && (
+                    <span className="status-chip status-awaiting_payment" style={{ fontSize: "11px", display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                      <Clock3 size={12} /> Reserved
+                    </span>
+                  )}
+                </div>
+
+                {/* Details / History */}
+                <div style={{ fontSize: "11px", color: "#4a5568", lineHeight: 1.4 }}>
+                  {item.status === "sold" ? (
+                    <>
+                      <div>
+                        <b>ক্রেতা:</b> {item.soldToEmail || "—"}
+                      </div>
+                      <div style={{ color: "#718096" }}>
+                        অর্ডার: #{item.orderId ?? "—"} • {dateText(item.soldAt)}
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div>যোগ করা হয়েছে: {dateText(item.createdAt)}</div>
+                      {item.notes && <div style={{ color: "#718096" }}>নোট: {item.notes}</div>}
+                    </>
+                  )}
+                </div>
+
+                {/* Actions */}
+                <div style={{ textAlign: "right", display: "flex", justifyContent: "flex-end", gap: "6px" }}>
+                  {item.status === "available" && (
+                    <button
+                      type="button"
+                      className="button button-sm button-light"
+                      style={{ color: "#dc2626", borderColor: "#fecaca" }}
+                      onClick={() => {
+                        if (confirm("আপনি কি নিশ্চিত এই আইটেমটি স্টক থেকে মুছে ফেলতে চান?")) {
+                          deleteItem.mutate({ id: item.id });
+                        }
+                      }}
+                      disabled={deleteItem.isPending}
+                      title="স্টক থেকে মুছুন"
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  )}
+                  {item.status === "sold" && (
+                    <button
+                      type="button"
+                      className="button button-sm button-light"
+                      style={{ color: "#0b765c", borderColor: "#a7f3d0", fontSize: "11px" }}
+                      onClick={() => {
+                        if (confirm("আইটেমটি পুনরায় সচল স্টকে ফেরত দিতে চান? এটি কাস্টমারদের জন্য আবার ক্রয়ের জন্য উন্মুক্ত হবে।")) {
+                          returnToStock.mutate({ id: item.id });
+                        }
+                      }}
+                      disabled={returnToStock.isPending}
+                      title="পুনরায় স্টকে ফেরত দিন"
+                    >
+                      <RotateCcw size={13} /> স্টকে ফেরান
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      {/* Pagination Footer */}
+      {itemsQuery.data && itemsQuery.data.total > itemsQuery.data.limit && (
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "14px", padding: "0 4px" }}>
+          <small style={{ color: "#718096" }}>
+            মোট {itemsQuery.data.total}টি আইটেমের মধ্যে {((page - 1) * itemsQuery.data.limit) + 1} - {Math.min(page * itemsQuery.data.limit, itemsQuery.data.total)} দেখানো হচ্ছে
+          </small>
+          <div style={{ display: "flex", gap: "8px" }}>
+            <button
+              type="button"
+              className="button button-sm button-light"
+              disabled={page <= 1}
+              onClick={() => setPage(p => Math.max(1, p - 1))}
+            >
+              পূর্ববর্তী
+            </button>
+            <span style={{ display: "inline-flex", alignItems: "center", padding: "0 8px", fontSize: "12px", fontWeight: 700 }}>
+              পৃষ্ঠা {page}
+            </span>
+            <button
+              type="button"
+              className="button button-sm button-light"
+              disabled={page * itemsQuery.data.limit >= itemsQuery.data.total}
+              onClick={() => setPage(p => p + 1)}
+            >
+              পরবর্তী
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Create Custom Product */}
+      {createProductOpen && (
+        <CreateCustomProductModal
+          onClose={() => setCreateProductOpen(false)}
+          onSuccess={() => {
+            setCreateProductOpen(false);
+            refreshAll();
+          }}
+        />
+      )}
+
+      {/* Modal: Add Bulk Stock */}
+      {addBulkOpen && (
+        <AddBulkStockModal
+          products={products}
+          initialServiceKey={bulkServiceKey}
+          onClose={() => setAddBulkOpen(false)}
+          onSuccess={() => {
+            setAddBulkOpen(false);
+            refreshAll();
+          }}
+        />
+      )}
+    </>
+  );
+}
+
+function CreateCustomProductModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
+  const [name, setName] = useState("");
+  const [price, setPrice] = useState("");
+  const [description, setDescription] = useState("");
+  const [selectedBrand, setSelectedBrand] = useState("brand:key");
+  const [credentials, setCredentials] = useState("");
+
+  const create = trpc.shop.admin.customInventory.createProduct.useMutation({
+    onSuccess: (res) => {
+      toast.success(`প্রোডাক্ট "${res.name}" তৈরি হয়েছে! (${res.initialStock}টি স্টক যোগ হয়েছে)`);
+      onSuccess();
+    },
+    onError: (err) => toast.error(err.message || "প্রোডাক্ট তৈরিতে সমস্যা হয়েছে"),
+  });
+
+  const parsedLines = credentials
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const retail = parseFloat(price);
+    if (!name.trim()) return toast.error("প্রোডাক্টের নাম দিন");
+    if (isNaN(retail) || retail <= 0) return toast.error("সঠিক বিক্রয়মূল্য (BDT) দিন");
+
+    create.mutate({
+      name: name.trim(),
+      retailPrice: retail,
+      customDescription: description.trim() || undefined,
+      imageUrl: selectedBrand.startsWith("brand:") ? selectedBrand : undefined,
+      bulkCredentials: credentials.trim() || undefined,
+    });
+  };
+
+  return (
+    <div className="product-modal-backdrop" onClick={onClose}>
+      <div className="vault-modal-card" onClick={(e) => e.stopPropagation()}>
+        <button type="button" className="product-modal-close" onClick={onClose}>
+          <X size={18} />
+        </button>
+
+        <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "16px" }}>
+          <div style={{ background: "#e6f4ef", color: "#0b765c", padding: "8px", borderRadius: "10px" }}>
+            <Plus size={20} />
+          </div>
+          <div>
+            <h2 style={{ fontSize: "18px", fontWeight: 700, margin: 0 }}>নতুন নিজস্ব ডিজিটাল প্রোডাক্ট</h2>
+            <p style={{ margin: "2px 0 0", fontSize: "12px", color: "#64748b" }}>
+              আপনার নিজস্ব অ্যাকাউন্ট, রিডিম লিঙ্ক বা লাইসেন্স কোড বিক্রির জন্য প্রোডাক্ট তৈরি করুন
+            </p>
+          </div>
+        </div>
+
+        <form onSubmit={handleSubmit} style={{ display: "grid", gap: "14px" }}>
+          <div>
+            <label style={{ display: "block", fontSize: "12px", fontWeight: 700, marginBottom: "4px" }}>
+              প্রোডাক্টের নাম *
+            </label>
+            <input
+              type="text"
+              className="admin-password-input"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="যেমন: NordVPN Premium 1 Year Private"
+              required
+            />
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+            <div>
+              <label style={{ display: "block", fontSize: "12px", fontWeight: 700, marginBottom: "4px" }}>
+                বিক্রয় মূল্য (BDT) *
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                min="1"
+                className="admin-password-input"
+                value={price}
+                onChange={(e) => setPrice(e.target.value)}
+                placeholder="450"
+                required
+              />
+            </div>
+            <div>
+              <label style={{ display: "block", fontSize: "12px", fontWeight: 700, marginBottom: "4px" }}>
+                ব্র্যান্ড লোগো / আইকন
+              </label>
+              <select
+                className="admin-password-input"
+                value={selectedBrand}
+                onChange={(e) => setSelectedBrand(e.target.value)}
+              >
+                {BRAND_ICON_PRESETS.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.label} ({p.category})
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label style={{ display: "block", fontSize: "12px", fontWeight: 700, marginBottom: "4px" }}>
+              বিবরণ / নির্দেশনা (ঐচ্ছিক)
+            </label>
+            <input
+              type="text"
+              className="admin-password-input"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="যেমন: ১ মাসের সম্পূর্ণ নিজস্ব অ্যাকাউন্ট। ক্রয়ের সাথে সাথে ইমেইলে যাবে।"
+            />
+          </div>
+
+          <div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: "4px" }}>
+              <label style={{ fontSize: "12px", fontWeight: 700 }}>
+                প্রাথমিক স্টক / অ্যাকাউন্ট তালিকা (ঐচ্ছিক)
+              </label>
+              <small style={{ color: "#0b765c", fontWeight: 700 }}>
+                {parsedLines.length} টি আইটেম সনাক্ত হয়েছে
+              </small>
+            </div>
+            <textarea
+              className="admin-password-input"
+              rows={5}
+              style={{ fontFamily: "ui-monospace, monospace", fontSize: "12px", lineHeight: 1.4 }}
+              value={credentials}
+              onChange={(e) => setCredentials(e.target.value)}
+              placeholder={`প্রতি লাইনে ১টি করে অ্যাকাউন্ট বা কোড দিন:
+user1@mail.com:pass123
+user2@mail.com:pass456
+https://redeem.example.com/xyz`}
+            />
+            <small style={{ color: "#718096", fontSize: "11px", display: "block", marginTop: "4px" }}>
+              * পরে যেকোনো সময় "বাল্ক স্টক যোগ" অপশন দিয়ে আরও অ্যাকাউন্ট যুক্ত করতে পারবেন।
+            </small>
+          </div>
+
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "8px" }}>
+            <button type="button" className="button button-light" onClick={onClose}>
+              বাতিল
+            </button>
+            <button
+              type="submit"
+              className="button button-primary"
+              disabled={create.isPending || !name.trim() || !price}
+            >
+              {create.isPending ? <LoaderCircle size={15} className="spin" /> : <Plus size={15} />}
+              প্রোডাক্ট তৈরি করুন
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function AddBulkStockModal({
+  products,
+  initialServiceKey,
+  onClose,
+  onSuccess,
+}: {
+  products: { serviceKey: string; name: string; availableCount: number }[];
+  initialServiceKey: string;
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
+  const [serviceKey, setServiceKey] = useState(initialServiceKey || (products[0]?.serviceKey ?? ""));
+  const [credentials, setCredentials] = useState("");
+  const [notes, setNotes] = useState("");
+
+  const addBulk = trpc.shop.admin.customInventory.addBulk.useMutation({
+    onSuccess: (res) => {
+      toast.success(`${res.added}টি নতুন অ্যাকাউন্ট স্টকে যুক্ত হয়েছে! মোট এভেইলেবল: ${res.totalAvailable}টি`);
+      onSuccess();
+    },
+    onError: (err) => toast.error(err.message || "স্টক যোগ করতে ব্যর্থ হয়েছে"),
+  });
+
+  const parsedLines = credentials
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!serviceKey) return toast.error("একটি প্রোডাক্ট নির্বাচন করুন");
+    if (!parsedLines.length) return toast.error("অন্তত ১টি অ্যাকাউন্ট বা কোড পেস্ট করুন");
+
+    addBulk.mutate({
+      serviceKey,
+      bulkCredentials: credentials,
+      notes: notes.trim() || undefined,
+    });
+  };
+
+  return (
+    <div className="product-modal-backdrop" onClick={onClose}>
+      <div className="vault-modal-card" onClick={(e) => e.stopPropagation()}>
+        <button type="button" className="product-modal-close" onClick={onClose}>
+          <X size={18} />
+        </button>
+
+        <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "16px" }}>
+          <div style={{ background: "#e6f4ef", color: "#0b765c", padding: "8px", borderRadius: "10px" }}>
+            <Database size={20} />
+          </div>
+          <div>
+            <h2 style={{ fontSize: "18px", fontWeight: 700, margin: 0 }}>বাল্ক স্টক যোগ করুন</h2>
+            <p style={{ margin: "2px 0 0", fontSize: "12px", color: "#64748b" }}>
+              আপনার স্টকে একাধিক অ্যাকাউন্ট, ইউজার-পাস বা লিঙ্ক পেস্ট করে এক ক্লিকে স্টক বাড়ান
+            </p>
+          </div>
+        </div>
+
+        <form onSubmit={handleSubmit} style={{ display: "grid", gap: "14px" }}>
+          <div>
+            <label style={{ display: "block", fontSize: "12px", fontWeight: 700, marginBottom: "4px" }}>
+              প্রোডাক্ট নির্বাচন করুন *
+            </label>
+            <select
+              className="admin-password-input"
+              value={serviceKey}
+              onChange={(e) => setServiceKey(e.target.value)}
+              required
+            >
+              {products.map((p) => (
+                <option key={p.serviceKey} value={p.serviceKey}>
+                  {p.name} (বর্তমানে স্টকে: {p.availableCount}টি)
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: "4px" }}>
+              <label style={{ fontSize: "12px", fontWeight: 700 }}>
+                অ্যাকাউন্ট / কোড / লিঙ্ক তালিকা * (প্রতি লাইনে ১টি)
+              </label>
+              <span style={{ fontSize: "12px", fontWeight: 700, color: parsedLines.length > 0 ? "#0b765c" : "#718096" }}>
+                💡 সনাক্তকৃত: {parsedLines.length} টি
+              </span>
+            </div>
+            <textarea
+              className="admin-password-input"
+              rows={8}
+              style={{ fontFamily: "ui-monospace, monospace", fontSize: "12px", lineHeight: 1.4 }}
+              value={credentials}
+              onChange={(e) => setCredentials(e.target.value)}
+              placeholder={`user1@domain.com:password123
+user2@domain.com:password456
+https://redeem.invite.link/token-abc-789
+PRODUCT-KEY-XXXX-YYYY-ZZZZ`}
+              required
+            />
+          </div>
+
+          <div>
+            <label style={{ display: "block", fontSize: "12px", fontWeight: 700, marginBottom: "4px" }}>
+              ব্যাচ নোট (ঐচ্ছিক)
+            </label>
+            <input
+              type="text"
+              className="admin-password-input"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="যেমন: Batch 2 - Oct 2026, Source Vendor A"
+            />
+          </div>
+
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "8px" }}>
+            <button type="button" className="button button-light" onClick={onClose}>
+              বাতিল
+            </button>
+            <button
+              type="submit"
+              className="button button-primary"
+              disabled={addBulk.isPending || parsedLines.length === 0}
+            >
+              {addBulk.isPending ? <LoaderCircle size={15} className="spin" /> : <CheckCircle2 size={15} />}
+              {parsedLines.length > 0 ? `${parsedLines.length}টি অ্যাকাউন্ট স্টকে যোগ করুন` : "স্টকে যোগ করুন"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
 }
 
 function OrdersSection() {

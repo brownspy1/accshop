@@ -161,6 +161,23 @@ export const emailOutbox = pgTable("shop_email_outbox", {
   orderFk: foreignKey({ columns: [table.orderId], foreignColumns: [orders.id], name: "shop_email_outbox_order_fk" }).onDelete("cascade"),
 }));
 
+export const customProductInventory = pgTable("custom_product_inventory", {
+  id: serial("id").primaryKey(),
+  serviceKey: varchar("serviceKey", { length: 128 }).notNull(),
+  credentialData: text("credentialData").notNull(),
+  status: varchar("status", { length: 32 }).notNull().default("available"),
+  orderId: integer("orderId"),
+  orderItemId: integer("orderItemId"),
+  soldToEmail: varchar("soldToEmail", { length: 320 }),
+  soldAt: timestamp("soldAt"),
+  notes: text("notes"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+}, table => ({
+  serviceStatusIdx: index("custom_inventory_service_status_idx").on(table.serviceKey, table.status),
+  orderIdx: index("custom_inventory_order_idx").on(table.orderId),
+}));
+
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
 export type ActivationService = typeof activationServices.$inferSelect;
@@ -168,3 +185,5 @@ export type ShopOrder = typeof orders.$inferSelect;
 export type ShopOrderItem = typeof orderItems.$inferSelect;
 export type ShopCustomerAccount = typeof customerAccounts.$inferSelect;
 export type ShopEmailOutbox = typeof emailOutbox.$inferSelect;
+export type CustomProductInventory = typeof customProductInventory.$inferSelect;
+export type InsertCustomProductInventory = typeof customProductInventory.$inferInsert;
