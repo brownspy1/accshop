@@ -18,6 +18,7 @@ import { listResendDomains, verifiedSenderDomain } from "./resend";
 import { setDynamicAdminEmail } from "./_core/adminAllowlist";
 import { hashAdminPassword, verifyAdminPassword, verifyFallbackAdminSecret } from "./adminAuth";
 import { adminProcedure, publicProcedure, router } from "./_core/trpc";
+import { ensureProductThumbnailsInDb, getProductThumbnail } from "./productThumbnails";
 
 const newOrderNo = customAlphabet("23456789ABCDEFGHJKLMNPQRSTUVWXYZ", 13);
 const defaultSettings = {
@@ -192,6 +193,7 @@ export const shopRouter = router({
       await refreshCatalogIfNeeded();
       const db = await getDb();
       if (!db) return [];
+      void ensureProductThumbnailsInDb(db);
       const rows = await db.select().from(activationServices).where(and(
         eq(activationServices.isListed, 1), eq(activationServices.isActive, 1),
       )).orderBy(activationServices.name);
@@ -210,6 +212,7 @@ export const shopRouter = router({
         const stockAge = lastStockSyncedAt ? Date.now() - new Date(lastStockSyncedAt).getTime() : Number.POSITIVE_INFINITY;
         return [{
           ...item,
+          imageUrl: row.imageUrl?.trim() ? row.imageUrl : getProductThumbnail(row.serviceKey, row.name),
           description: row.customDescription || row.description,
           customDescription: row.customDescription,
           stock: Math.max(0, stock - reservedStock),
@@ -488,7 +491,12 @@ export const shopRouter = router({
         await refreshCatalogIfNeeded();
         const db = await getDb();
         if (!db) throw new Error("Database is not available");
-        return db.select().from(activationServices).orderBy(activationServices.name);
+        void ensureProductThumbnailsInDb(db);
+        const rows = await db.select().from(activationServices).orderBy(activationServices.name);
+        return rows.map(row => ({
+          ...row,
+          imageUrl: row.imageUrl?.trim() ? row.imageUrl : getProductThumbnail(row.serviceKey, row.name),
+        }));
       }),
       sync: adminProcedure.input(z.object({ provider: z.enum(["acczone", "couponshops"]) })).mutation(async ({ input }) => {
         return syncProviderCatalog(input.provider);

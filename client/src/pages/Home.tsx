@@ -274,16 +274,16 @@ export default function Home() {
                     }
                   }}
                 >
-                  <div className={`product-mark mark-${index % 5}`}>
-                    {product.imageUrl ? (
+                  {product.imageUrl ? (
+                    <div className="product-card-thumb">
                       <img src={product.imageUrl} alt={`${product.name}`} loading="lazy" />
-                    ) : (
-                      <>
-                        <span>{shortLabel(product.serviceKey)}</span>
-                        <i className="mark-spark">✳</i>
-                      </>
-                    )}
-                  </div>
+                    </div>
+                  ) : (
+                    <div className={`product-mark mark-${index % 5}`}>
+                      <span>{shortLabel(product.serviceKey)}</span>
+                      <i className="mark-spark">✳</i>
+                    </div>
+                  )}
                   <div className="product-topline">
                     <span className="category-label">{categoryFor(product.serviceKey, product.name)}</span>
                     <span className={`availability ${product.stock < 1 ? "out" : ""} ${!product.stockFresh ? "stale" : ""}`}>
