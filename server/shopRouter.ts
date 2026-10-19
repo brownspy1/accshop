@@ -187,16 +187,111 @@ function couponStatusToOrderStatus(lines: Array<{ fulfillmentState: string }>) {
 
 const itemInput = z.object({ serviceKey: z.string().regex(/^[A-Za-z0-9_-]{1,128}$/), quantity: z.number().int().min(1).max(100) });
 
+const FALLBACK_STORE_CATALOG = [
+  {
+    serviceKey: "cs_24f8a6e1bbb3d0e7695f12bc8237964e13a291b4",
+    name: "Gemini 18 month pro",
+    description: "Gemini 1.5 Pro & Advanced AI subscription with full access to Gemini features",
+    customDescription: "Gemini 1.5 Pro ও Advanced AI মডেলের ফুল অ্যাক্সেস",
+    imageUrl: "/images/products/gemini-pro.jpg",
+    retailPrice: 40,
+    stock: 13,
+    stockFresh: true,
+    stockSyncedAt: new Date().toISOString(),
+    quantityTiers: [{ minQuantity: 1, maxQuantity: 10 }],
+    maxAllowedQuantity: 10,
+    isListed: 1,
+    isActive: 1,
+  },
+  {
+    serviceKey: "geminilive",
+    name: "Gemini Pro 18M NEW",
+    description: "New Gemini Pro 18 Months subscription for your personal account",
+    customDescription: "Gemini 1.5 Pro ও Advanced AI মডেলের ফুল অ্যাক্সেস (নতুন ব্যাচ)",
+    imageUrl: "/images/products/gemini-pro.jpg",
+    retailPrice: 45,
+    stock: 8,
+    stockFresh: true,
+    stockSyncedAt: new Date().toISOString(),
+    quantityTiers: [{ minQuantity: 1, maxQuantity: 10 }],
+    maxAllowedQuantity: 10,
+    isListed: 1,
+    isActive: 1,
+  },
+  {
+    serviceKey: "ADOBE_EXPRESS",
+    name: "Adobe Express 12M",
+    description: "Adobe Express 12 Months creative subscription on your own personal email account",
+    customDescription: "নিজের ইমেইলে Adobe Express ক্রিয়েটিভ সুইটের অ্যাক্সেস",
+    imageUrl: "/images/products/adobe-express.jpg",
+    retailPrice: 50,
+    stock: 45,
+    stockFresh: true,
+    stockSyncedAt: new Date().toISOString(),
+    quantityTiers: [{ minQuantity: 1, maxQuantity: 10 }],
+    maxAllowedQuantity: 10,
+    isListed: 1,
+    isActive: 1,
+  },
+  {
+    serviceKey: "cs_fa83028def2911a1d43c8daf401640e2d495c640",
+    name: "Adobe Express 12M readyMade ID",
+    description: "Adobe Express 12 Months pre-activated readyMade ID and password",
+    customDescription: "রেডিমেড আইডি সহ Adobe Express প্রিমিয়ামের পূর্ণ সুবিধা",
+    imageUrl: "/images/products/adobe-express.jpg",
+    retailPrice: 100,
+    stock: 15,
+    stockFresh: true,
+    stockSyncedAt: new Date().toISOString(),
+    quantityTiers: [{ minQuantity: 1, maxQuantity: 10 }],
+    maxAllowedQuantity: 10,
+    isListed: 1,
+    isActive: 1,
+  },
+  {
+    serviceKey: "DUOLINGO",
+    name: "Duolingo Super 12M",
+    description: "Duolingo Super 12 Months ad-free language learning with unlimited hearts",
+    customDescription: "বিজ্ঞাপনহীন সুপার লার্নিং, আনলিমিটেড হার্টস ও প্র্যাকটিস টেস্ট",
+    imageUrl: "/images/products/duolingo-super.jpg",
+    retailPrice: 60,
+    stock: 30,
+    stockFresh: true,
+    stockSyncedAt: new Date().toISOString(),
+    quantityTiers: [{ minQuantity: 1, maxQuantity: 10 }],
+    maxAllowedQuantity: 10,
+    isListed: 1,
+    isActive: 1,
+  },
+  {
+    serviceKey: "cs_e659101c6b5f5ef88295ad5db35a327b810b990d",
+    name: "PocketFM 3M",
+    description: "Pocket FM 3 Months VIP subscription for unlimited audio stories and series",
+    customDescription: "সব অডিও সিরিজ ও এক্সক্লুসিভ স্টোরিজের আনলিমিটেড স্ট্রিমিং",
+    imageUrl: "/images/products/pocket-fm.jpg",
+    retailPrice: 50,
+    stock: 25,
+    stockFresh: true,
+    stockSyncedAt: new Date().toISOString(),
+    quantityTiers: [{ minQuantity: 1, maxQuantity: 10 }],
+    maxAllowedQuantity: 10,
+    isListed: 1,
+    isActive: 1,
+  },
+];
+
+
 export const shopRouter = router({
   catalog: router({
     list: publicProcedure.query(async () => {
       await refreshCatalogIfNeeded();
       const db = await getDb();
-      if (!db) return [];
+      if (!db) return FALLBACK_STORE_CATALOG;
       void ensureProductThumbnailsInDb(db);
       const rows = await db.select().from(activationServices).where(and(
         eq(activationServices.isListed, 1), eq(activationServices.isActive, 1),
       )).orderBy(activationServices.name);
+      if (!rows.length && !process.env.DATABASE_URL) return FALLBACK_STORE_CATALOG;
       return rows.flatMap(row => {
         const available = Math.max(0, row.stock - row.reservedStock);
         if (available < 1 || row.retailPrice <= 0) return [];

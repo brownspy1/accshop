@@ -169,3 +169,290 @@
 .product-card-thumb{width:100%;aspect-ratio:16/9;border-radius:10px;overflow:hidden;background:#f0f5f2;border:1px solid #dce8e1;margin-bottom:13px;display:flex;align-items:center;justify-content:center}
 .product-card-thumb img{width:100%;height:100%;object-fit:cover;transition:transform .28s cubic-bezier(0.4,0,0.2,1)}
 .product-card:hover .product-card-thumb img{transform:scale(1.04)}
+
+/* ==========================================================================
+   VOUCHER WALL DESIGN SYSTEM (design.md)
+   ========================================================================== */
+:root {
+  --padma: #0B7A4B;
+  --bottle: #0F3D2E;
+  --jade-mist: #E4F4EA;
+  --paper: #F5F8F6;
+  --marigold: #FFC93C;
+  --line: #D5E3DA;
+  --coral: #E5484D;
+  --bkash: #E2136E;
+  --nagad: #F6921E;
+  --text: #0F3D2E;
+  --text-soft: #4A6258;
+
+  --r-chip: 999px;
+  --r-btn: 14px;
+  --r-input: 14px;
+  --r-logo: 18px;
+  --r-voucher: 24px;
+  --r-sheet: 28px;
+  --notch: 14px;
+
+  --sh-rest: 0 1px 0 rgba(15, 61, 46, 0.06), 0 8px 24px -12px rgba(15, 61, 46, 0.18);
+  --sh-lift: 0 2px 0 rgba(15, 61, 46, 0.08), 0 18px 36px -14px rgba(11, 122, 75, 0.35);
+  --sh-sheet: 0 -12px 48px -8px rgba(15, 61, 46, 0.35);
+
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --t-fast: 160ms;
+  --t-base: 280ms;
+  --t-slow: 520ms;
+
+  --font-display: "Anek Bangla", "Hind Siliguri", "Noto Sans Bengali", sans-serif;
+  --font-body: "Hind Siliguri", "Noto Sans Bengali", system-ui, sans-serif;
+}
+
+body {
+  font-family: var(--font-body);
+  background-color: var(--paper);
+  color: var(--text);
+  letter-spacing: normal !important;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, h4, .font-display, .price-display {
+  font-family: var(--font-display);
+  letter-spacing: normal !important;
+}
+
+/* Accessible focus ring */
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 3px solid var(--marigold) !important;
+  outline-offset: 1px !important;
+  box-shadow: 0 0 0 1px var(--bottle) !important;
+}
+
+/* Voucher Card Container */
+.voucher-card {
+  position: relative;
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: var(--r-voucher);
+  box-shadow: var(--sh-rest);
+  transition: transform var(--t-base) var(--ease), box-shadow var(--t-base) var(--ease);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  text-align: left;
+}
+
+@media (hover: hover) {
+  .voucher-card:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--sh-lift);
+  }
+}
+
+/* Perforation with side notches */
+.voucher-perforation {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 28px;
+  background: #ffffff;
+  overflow: visible;
+  user-select: none;
+}
+
+.voucher-notch-left,
+.voucher-notch-right {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: calc(var(--notch) * 2);
+  height: calc(var(--notch) * 2);
+  border-radius: 50%;
+  background-color: var(--paper);
+  border: 1px solid var(--line);
+  z-index: 2;
+  box-shadow: inset 0 1px 2px rgba(15, 61, 46, 0.08);
+}
+
+.voucher-notch-left {
+  left: calc(var(--notch) * -1);
+}
+
+.voucher-notch-right {
+  right: calc(var(--notch) * -1);
+}
+
+.voucher-dashed-line {
+  flex: 1;
+  height: 0;
+  border-top: 2px dashed var(--line);
+  margin: 0 calc(var(--notch) + 6px);
+}
+
+/* Price stub at voucher bottom */
+.voucher-stub {
+  background: var(--jade-mist);
+  padding: 16px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+/* Primary and secondary button styles */
+.btn-padma {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 12px 20px;
+  background-color: var(--padma);
+  color: #ffffff;
+  font-family: var(--font-body);
+  font-size: 15px;
+  font-weight: 700;
+  border-radius: var(--r-btn);
+  border: none;
+  cursor: pointer;
+  transition: background-color var(--t-fast) var(--ease), transform var(--t-fast) var(--ease);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.btn-padma:hover:not(:disabled) {
+  background-color: #09633d;
+  transform: translateY(-1px);
+}
+
+.btn-padma:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.btn-secondary-mist {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 12px 18px;
+  background-color: var(--jade-mist);
+  color: var(--bottle);
+  font-family: var(--font-body);
+  font-size: 15px;
+  font-weight: 700;
+  border-radius: var(--r-btn);
+  border: 1px solid var(--line);
+  cursor: pointer;
+  transition: background-color var(--t-fast) var(--ease);
+  text-decoration: none;
+}
+
+.btn-secondary-mist:hover:not(:disabled) {
+  background-color: #d6eee0;
+}
+
+.cart-icon-btn {
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--r-btn);
+  background-color: #ffffff;
+  border: 1.5px solid var(--line);
+  color: var(--bottle);
+  cursor: pointer;
+  transition: background-color var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease), transform var(--t-fast) var(--ease);
+  flex-shrink: 0;
+}
+
+.cart-icon-btn:hover {
+  background-color: var(--jade-mist);
+  border-color: var(--padma);
+  transform: scale(1.05);
+}
+
+/* Category & filter chips */
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: var(--r-chip);
+  font-size: 14px;
+  font-weight: 600;
+  border: 1px solid var(--line);
+  background: #ffffff;
+  color: var(--text-soft);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all var(--t-fast) var(--ease);
+}
+
+.filter-chip:hover {
+  background: var(--jade-mist);
+  color: var(--bottle);
+  border-color: #b5d9c2;
+}
+
+.filter-chip.active {
+  background: var(--padma);
+  color: #ffffff;
+  border-color: var(--padma);
+}
+
+/* Hero Live Order Ticket Animation */
+@keyframes printTicket {
+  0% {
+    transform: translateY(-40px);
+    opacity: 0;
+  }
+  100% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.ticket-print-anim {
+  animation: printTicket var(--t-slow) var(--ease) forwards;
+}
+
+/* Torn Ticket SVG Edge */
+.torn-ticket-edge {
+  width: 100%;
+  height: 16px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 12' preserveAspectRatio='none'%3E%3Cpolygon points='0,0 12,12 24,0' fill='%23F5F8F6'/%3E%3C/svg%3E");
+  background-repeat: repeat-x;
+  background-size: 24px 12px;
+}
+
+/* Scratch Card Canvas */
+.scratch-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: 12px;
+  cursor: grab;
+  touch-action: none;
+  z-index: 5;
+}
+
+.scratch-canvas:active {
+  cursor: grabbing;
+}
+
+/* Reduced Motion Override */
+@media (prefers-reduced-motion: reduce) {
+  .ticket-print-anim,
+  .voucher-card,
+  .cart-bump {
+    animation: none !important;
+    transition: none !important;
+    transform: none !important;
+  }
+}
+
