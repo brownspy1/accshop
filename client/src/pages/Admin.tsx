@@ -3,7 +3,7 @@ import { BrandLogoSquircle, BRAND_ICON_PRESETS } from "@/components/BrandLogos";
 import { startLogin } from "@/const";
 import { trpc } from "@/lib/trpc";
 import { formatMoney, orderStatusLabels } from "@/lib/shop";
-import { Activity, AlertTriangle, ArrowDownRight, ArrowLeft, ArrowRight, BadgeCheck, Banknote, Boxes, Check, CheckCircle2, ChevronDown, ChevronRight, CircleDollarSign, ClipboardList, Clock3, CreditCard, ExternalLink, Eye, EyeOff, FileText, ImagePlus, KeyRound, LayoutDashboard, LoaderCircle, LogOut, Mail, PackageCheck, RefreshCw, Save, Search, Settings2, ShieldCheck, ShoppingBag, Sparkles, Store, TrendingUp, Wallet, X, Zap } from "lucide-react";
+import { Activity, AlertTriangle, ArrowDownRight, ArrowLeft, ArrowRight, BadgeCheck, Banknote, Bot, Boxes, Check, CheckCircle2, ChevronDown, ChevronRight, CircleDollarSign, ClipboardList, Clock3, CreditCard, ExternalLink, Eye, EyeOff, FileText, Globe, ImagePlus, KeyRound, LayoutDashboard, LoaderCircle, LogOut, Mail, PackageCheck, Plus, RefreshCw, Save, Search, Settings2, ShieldCheck, ShoppingBag, Sparkles, Store, Trash2, TrendingUp, Wallet, X, Zap } from "lucide-react";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { Link } from "wouter";
 import { toast } from "sonner";
@@ -128,7 +128,7 @@ function ServicesSection() {
   const { data = [], isLoading } = trpc.shop.admin.services.list.useQuery();
   const [search, setSearch] = useState("");
   const [stockOnly, setStockOnly] = useState(false);
-  const [providerFilter, setProviderFilter] = useState<"all" | "acczone" | "couponshops">("all");
+  const [providerFilter, setProviderFilter] = useState<string>("all");
   const [listedFilter, setListedFilter] = useState<"all" | "listed" | "unlisted">("all");
 
   const sync = trpc.shop.admin.services.sync.useMutation({
@@ -154,8 +154,9 @@ function ServicesSection() {
     onError: err => toast.error(err.message || "সব API সিঙ্ক ব্যর্থ হয়েছে"),
   });
 
-  const syncProvider = (provider: "acczone" | "couponshops") => sync.mutate({ provider });
+  const syncProvider = (provider: string) => sync.mutate({ provider });
 
+  const distinctProviders = Array.from(new Set(data.map(item => item.provider))).filter(Boolean);
   const scopedData = data.filter(item => providerFilter === "all" || item.provider === providerFilter);
   const inStockCount = scopedData.filter(item => (item.stock - (item.reservedStock || 0)) > 0).length;
 
@@ -205,6 +206,13 @@ function ServicesSection() {
           disabled={syncAll.isPending || sync.isPending}
         >
           <RefreshCw className={sync.isPending ? "spin" : ""} size={14} /> CouponShops
+        </button>
+        <button
+          className="button button-light"
+          onClick={() => syncProvider("aitoolify")}
+          disabled={syncAll.isPending || sync.isPending}
+        >
+          <RefreshCw className={sync.isPending ? "spin" : ""} size={14} /> Aitoolify Bot
         </button>
       </div>
     </div>
@@ -256,6 +264,18 @@ function ServicesSection() {
           >
             CouponShops
           </button>
+          {distinctProviders
+            .filter(p => p !== "acczone" && p !== "couponshops")
+            .map(p => (
+              <button
+                key={p}
+                type="button"
+                className={`admin-chip ${providerFilter === p ? "active" : ""}`}
+                onClick={() => setProviderFilter(p)}
+              >
+                {p === "aitoolify" ? "Aitoolify Bot" : p}
+              </button>
+            ))}
         </div>
 
         {/* Storefront Listed Filter Chips */}
@@ -628,39 +648,558 @@ function StoredCodes({ value }: { value: string | null }) {
 }
 function ZapIcon() { return <span className="tiny-zap">↗</span>; }
 
-function ProviderKeyCard({ provider, status }: { provider: "acczone" | "couponshops"; status?: { configured: boolean; updatedAt: Date | null } }) {
+function ProviderKeyCard({
+  provider,
+  title,
+  description,
+  defaultBaseUrl,
+  status,
+}: {
+  provider: string;
+  title: string;
+  description: string;
+  defaultBaseUrl?: string;
+  status?: { configured: boolean; updatedAt: Date | null };
+}) {
   const utils = trpc.useUtils();
   const [apiKey, setApiKey] = useState("");
+  const [baseUrl, setBaseUrl] = useState(defaultBaseUrl || "");
   const [showKey, setShowKey] = useState(false);
   const [balance, setBalance] = useState<{ amount: number; currency: string; balanceInr: number | null; rateInrPerUsdt: number | null; username: string } | null>(null);
-  const title = provider === "acczone" ? "AccZone" : "CouponShops";
-  const configure = trpc.shop.admin.providers.configure.useMutation({ onSuccess: data => { setApiKey(""); setBalance(data); toast.success(`${title} API key verified ও encrypted storage-এ save হয়েছে`); void utils.shop.admin.providers.status.invalidate(); void utils.shop.admin.overview.invalidate(); }, onError: err => toast.error(err.message) });
+
+  const configure = trpc.shop.admin.providers.configure.useMutation({
+    onSuccess: (data) => {
+      setApiKey("");
+      setBalance(data);
+      toast.success(`${title} API key verified ও encrypted storage-এ save হয়েছে`);
+      void utils.shop.admin.providers.status.invalidate();
+      void utils.shop.admin.providers.list.invalidate();
+      void utils.shop.admin.overview.invalidate();
+      void utils.shop.admin.services.list.invalidate();
+      void utils.shop.catalog.list.invalidate();
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
   const balanceQuery = trpc.shop.admin.providers.balance.useQuery({ provider }, { enabled: false, retry: false });
+
   const check = async () => {
     const refreshed = await balanceQuery.refetch();
     if (refreshed.data) setBalance(refreshed.data);
     if (refreshed.error) toast.error(refreshed.error.message);
   };
-  const submit = (event: FormEvent) => { event.preventDefault(); if (apiKey.trim()) configure.mutate({ provider, apiKey }); };
-  return <section className="admin-panel connection-card">
-    <div className="panel-top"><div><h2>{title} API key</h2><p>{provider === "acczone" ? "Balance, catalog ও activation purchase" : "Coupon catalog, INR/USDT wallet ও idempotent order"}</p></div><div className="connection-key-icon"><KeyRound size={19} /></div></div>
-    <div className="key-callout"><ShieldCheck size={16} /><span>AES-256-GCM, project-scoped encryption. Key শুধু server-এ ব্যবহৃত হয়; save হওয়ার পর আর read-back নেই।</span></div>
-    <form onSubmit={submit}><label className="field">{title} API key <span className="optional">শুধু verify করতে একবার লিখুন</span><span className="secret-input-wrap"><input type={showKey ? "text" : "password"} autoComplete="new-password" spellCheck={false} value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder={status?.configured ? "Credential configured; replace করতে নতুন key লিখুন" : `${title} account থেকে API key লিখুন`} minLength={8} maxLength={2048} required /><button type="button" className="reveal-key" onClick={() => setShowKey(!showKey)} aria-label={showKey ? "Hide key" : "Show key"}>{showKey ? <EyeOff size={16} /> : <Eye size={16} />}</button></span></label>
-      <p className="form-help">Submit করলে server {provider === "acczone" ? "/getBalance" : "/balance"}-এ key validate করে encrypted database-এ রাখবে। Browser/API response/log/source-এ key লেখা হবে না।</p>
-      <button className="button button-primary" type="submit" disabled={configure.isPending || !apiKey.trim()}>{configure.isPending ? <LoaderCircle className="spin" size={15} /> : <ShieldCheck size={15} />}{configure.isPending ? "Verify & save হচ্ছে…" : status?.configured ? "Verify & replace key" : "Verify & save key"}</button>
-    </form>
-    {status?.configured && <div className="configured-note"><CheckCircle2 size={16} /> Credential configured · value hidden{status.updatedAt ? ` · updated ${dateText(status.updatedAt)}` : ""}</div>}
-    <div className="connection-health"><div className="panel-top"><div><h3>Account health</h3><p>Provider-এর current balance</p></div><span className="health-pulse"><i /></span></div>{balance ? <><div className="balance-value"><small>{balance.currency} balance</small><strong>{balance.amount.toFixed(2)}</strong></div>{balance.balanceInr !== null && <div className="health-row"><span>Wallet INR</span><b>₹{balance.balanceInr.toFixed(2)} · 1 USDT = ₹{balance.rateInrPerUsdt}</b></div>}{balance.username && <div className="health-row"><span>Account</span><b>{balance.username}</b></div>}</> : <div className="balance-empty"><Wallet size={22} /><b>Balance summary নেই</b><span>{status?.configured ? "Provider account এখন check করুন।" : "API key add করলে এখানে balance দেখাবে।"}</span></div>}<button className="button button-light full-button" disabled={!status?.configured || balanceQuery.isFetching} onClick={() => void check()}>{balanceQuery.isFetching ? <LoaderCircle className="spin" size={14} /> : <RefreshCw size={14} />} Check balance</button></div>
-  </section>;
+
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    if (apiKey.trim()) {
+      configure.mutate({
+        provider,
+        apiKey: apiKey.trim(),
+        baseUrl: baseUrl.trim() || undefined,
+        label: title,
+      });
+    }
+  };
+
+  return (
+    <section className="admin-panel connection-card">
+      <div className="panel-top">
+        <div>
+          <h2>{title}</h2>
+          <p>{description}</p>
+        </div>
+        <div className="connection-key-icon">
+          <KeyRound size={19} />
+        </div>
+      </div>
+      <div className="key-callout">
+        <ShieldCheck size={16} />
+        <span>AES-256-GCM, project-scoped encryption. Key শুধু server-এ ব্যবহৃত হয়; save হওয়ার পর আর read-back নেই।</span>
+      </div>
+      <form onSubmit={submit}>
+        {defaultBaseUrl !== undefined && (
+          <label className="field" style={{ marginBottom: "10px" }}>
+            API Entry Point (Base URL)
+            <input
+              type="text"
+              value={baseUrl}
+              onChange={(e) => setBaseUrl(e.target.value)}
+              placeholder="https://bot.aitoolifystudio.io/api/reseller/v1"
+            />
+          </label>
+        )}
+        <label className="field">
+          {title} API key <span className="optional">শুধু verify করতে একবার লিখুন</span>
+          <span className="secret-input-wrap">
+            <input
+              type={showKey ? "text" : "password"}
+              autoComplete="new-password"
+              spellCheck={false}
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              placeholder={status?.configured ? "Credential configured; replace করতে নতুন key লিখুন" : `${title} account থেকে API key লিখুন`}
+              minLength={4}
+              maxLength={2048}
+              required
+            />
+            <button
+              type="button"
+              className="reveal-key"
+              onClick={() => setShowKey(!showKey)}
+              aria-label={showKey ? "Hide key" : "Show key"}
+            >
+              {showKey ? <EyeOff size={16} /> : <Eye size={16} />}
+            </button>
+          </span>
+        </label>
+        <p className="form-help">
+          Submit করলে server লাইভ balance যাচাই করে encrypted database-এ রাখবে এবং স্বয়ংক্রিয়ভাবে ক্যাটালগ সিঙ্ক করবে।
+        </p>
+        <button
+          className="button button-primary"
+          type="submit"
+          disabled={configure.isPending || !apiKey.trim()}
+        >
+          {configure.isPending ? <LoaderCircle className="spin" size={15} /> : <ShieldCheck size={15} />}
+          {configure.isPending ? "Verify & save হচ্ছে…" : status?.configured ? "Verify & replace key" : "Verify & save key"}
+        </button>
+      </form>
+      {status?.configured && (
+        <div className="configured-note">
+          <CheckCircle2 size={16} /> Credential configured · value hidden
+          {status.updatedAt ? ` · updated ${dateText(status.updatedAt)}` : ""}
+        </div>
+      )}
+      <div className="connection-health">
+        <div className="panel-top">
+          <div>
+            <h3>Account health</h3>
+            <p>Provider-এর current balance</p>
+          </div>
+          <span className="health-pulse">
+            <i />
+          </span>
+        </div>
+        {balance ? (
+          <>
+            <div className="balance-value">
+              <small>{balance.currency} balance</small>
+              <strong>{balance.amount.toFixed(2)}</strong>
+            </div>
+            {balance.balanceInr !== null && (
+              <div className="health-row">
+                <span>Wallet INR</span>
+                <b>₹{balance.balanceInr.toFixed(2)} · 1 USDT = ₹{balance.rateInrPerUsdt}</b>
+              </div>
+            )}
+            {balance.username && (
+              <div className="health-row">
+                <span>Account</span>
+                <b>{balance.username}</b>
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="balance-empty">
+            <Wallet size={22} />
+            <b>Balance summary নেই</b>
+            <span>{status?.configured ? "Provider account এখন check করুন।" : "API key add করলে এখানে balance দেখাবে।"}</span>
+          </div>
+        )}
+        <button
+          className="button button-light full-button"
+          disabled={!status?.configured || balanceQuery.isFetching}
+          onClick={() => void check()}
+        >
+          {balanceQuery.isFetching ? <LoaderCircle className="spin" size={14} /> : <RefreshCw size={14} />} Check balance
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function CustomBotProviderManager() {
+  const utils = trpc.useUtils();
+  const providersQuery = trpc.shop.admin.providers.list.useQuery();
+  const [label, setLabel] = useState("");
+  const [baseUrl, setBaseUrl] = useState("");
+  const [apiKey, setApiKey] = useState("");
+  const [showKey, setShowKey] = useState(false);
+  const [testResult, setTestResult] = useState<{ success: boolean; balance: number; currency: string; message: string } | null>(null);
+  const [customBalances, setCustomBalances] = useState<Record<string, { amount: number; currency: string }>>({});
+  const [checkingBalance, setCheckingBalance] = useState<string | null>(null);
+
+  const testConnection = trpc.shop.admin.providers.testCustom.useMutation({
+    onSuccess: (res) => {
+      setTestResult(res);
+      toast.success(res.message);
+    },
+    onError: (err) => {
+      setTestResult(null);
+      toast.error(err.message || "Connection test ব্যর্থ হয়েছে");
+    },
+  });
+
+  const saveProvider = trpc.shop.admin.providers.configureCustom.useMutation({
+    onSuccess: (res) => {
+      toast.success(`Provider "${res.label}" সফলভাবে যুক্ত হয়েছে এবং ক্যাটালগ সিঙ্ক শুরু হয়েছে!`);
+      setLabel("");
+      setBaseUrl("");
+      setApiKey("");
+      setTestResult(null);
+      void utils.shop.admin.providers.list.invalidate();
+      void utils.shop.admin.providers.status.invalidate();
+      void utils.shop.admin.services.list.invalidate();
+      void utils.shop.catalog.list.invalidate();
+      void utils.shop.admin.overview.invalidate();
+    },
+    onError: (err) => {
+      toast.error(err.message || "Provider সংরক্ষণ ব্যর্থ হয়েছে");
+    },
+  });
+
+  const deleteProvider = trpc.shop.admin.providers.delete.useMutation({
+    onSuccess: () => {
+      toast.success("Provider ডিলিট হয়েছে");
+      void utils.shop.admin.providers.list.invalidate();
+      void utils.shop.admin.providers.status.invalidate();
+      void utils.shop.admin.services.list.invalidate();
+      void utils.shop.catalog.list.invalidate();
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  const syncSingle = trpc.shop.admin.services.sync.useMutation({
+    onSuccess: (res) => {
+      toast.success(`${res.provider}: ${res.synced} টি সার্ভিস সফলভাবে সিঙ্ক হয়েছে`);
+      void utils.shop.admin.services.list.invalidate();
+      void utils.shop.catalog.list.invalidate();
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  const handleTest = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!baseUrl.trim() || !apiKey.trim()) {
+      toast.error("API Entry Point (URL) এবং API Key দিন");
+      return;
+    }
+    testConnection.mutate({ baseUrl: baseUrl.trim(), apiKey: apiKey.trim() });
+  };
+
+  const handleSave = () => {
+    if (!label.trim()) {
+      toast.error("Provider-এর একটি নাম দিন (যেমন: Baku Bob API)");
+      return;
+    }
+    if (!baseUrl.trim() || !apiKey.trim()) {
+      toast.error("API Entry Point এবং API Key উভয়ই প্রয়োজন");
+      return;
+    }
+    const slug = label
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9_-]+/g, "_")
+      .replace(/^_+|_+$/g, "")
+      .slice(0, 30) || `bot_${Date.now().toString(36)}`;
+
+    saveProvider.mutate({
+      provider: slug,
+      label: label.trim(),
+      baseUrl: baseUrl.trim(),
+      apiKey: apiKey.trim(),
+    });
+  };
+
+  const checkSingleBalance = async (provider: string) => {
+    setCheckingBalance(provider);
+    try {
+      const res = await utils.client.shop.admin.providers.balance.query({ provider });
+      setCustomBalances((prev) => ({ ...prev, [provider]: { amount: res.amount, currency: res.currency } }));
+      toast.success(`${provider} ব্যালেন্স: ${res.amount.toFixed(2)} ${res.currency}`);
+    } catch (err: any) {
+      toast.error(err.message || "Balance চেক করা যায়নি");
+    } finally {
+      setCheckingBalance(null);
+    }
+  };
+
+  const customProviders = (providersQuery.data || []).filter(
+    (p) => p.provider !== "acczone" && p.provider !== "couponshops" && p.provider !== "aitoolify"
+  );
+
+  return (
+    <div style={{ marginTop: "24px" }}>
+      <section className="admin-panel" style={{ padding: "20px" }}>
+        <div className="panel-top">
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
+              <Bot size={20} style={{ color: "var(--brand, #0d342f)" }} />
+              <h2 style={{ margin: 0 }}>Add Custom Bot / Reseller API (Baku Bob & Other Reseller v1)</h2>
+            </div>
+            <p>
+              যেকোনো Baku Bob বা Telegram Bot Reseller v1 API সরাসরি যুক্ত করুন। URL ও Key দিয়ে লাইভ টেস্ট করুন, কাজ করলে সাথে সাথে সেইভ করে প্রোডাক্ট সিঙ্ক করুন।
+            </p>
+          </div>
+        </div>
+
+        <form onSubmit={handleTest} style={{ marginTop: "16px" }}>
+          <div className="settings-grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "14px" }}>
+            <label className="field">
+              Provider Name / Label
+              <input
+                type="text"
+                value={label}
+                onChange={(e) => setLabel(e.target.value)}
+                placeholder="যেমন: Baku Bob Bot বা Reseller Shop"
+                maxLength={100}
+              />
+            </label>
+
+            <label className="field">
+              API Entry Point (Base URL)
+              <input
+                type="text"
+                value={baseUrl}
+                onChange={(e) => setBaseUrl(e.target.value)}
+                placeholder="যেমন: https://bot.aitoolifystudio.io/docs বা https://api.mybot.com"
+                maxLength={255}
+              />
+            </label>
+
+            <label className="field full-field">
+              API Key (Secret Token)
+              <span className="secret-input-wrap">
+                <input
+                  type={showKey ? "text" : "password"}
+                  autoComplete="new-password"
+                  value={apiKey}
+                  onChange={(e) => setApiKey(e.target.value)}
+                  placeholder="বট থেকে পাওয়া গোপন API Key পেস্ট করুন"
+                  maxLength={1024}
+                />
+                <button
+                  type="button"
+                  className="reveal-key"
+                  onClick={() => setShowKey(!showKey)}
+                  aria-label={showKey ? "Hide key" : "Show key"}
+                >
+                  {showKey ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </span>
+            </label>
+          </div>
+
+          {testResult && (
+            <div
+              style={{
+                marginTop: "14px",
+                padding: "12px 16px",
+                borderRadius: "8px",
+                background: "rgba(16, 185, 129, 0.1)",
+                border: "1px solid rgba(16, 185, 129, 0.3)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                flexWrap: "wrap",
+                gap: "10px",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <CheckCircle2 size={18} style={{ color: "#10b981" }} />
+                <span style={{ fontWeight: 600, color: "#065f46" }}>
+                  API সংযোগ সফল! ব্যালেন্স: {testResult.balance.toFixed(2)} {testResult.currency}
+                </span>
+              </div>
+              <span style={{ fontSize: "11px", color: "#047857" }}>
+                স্বয়ংক্রিয়ভাবে এন্ডপয়েন্ট ও অথেন্টিকেশন ভেরিফাইড
+              </span>
+            </div>
+          )}
+
+          <div style={{ marginTop: "16px", display: "flex", gap: "10px", flexWrap: "wrap" }}>
+            <button
+              type="submit"
+              className="button button-light"
+              disabled={testConnection.isPending || !baseUrl.trim() || !apiKey.trim()}
+            >
+              {testConnection.isPending ? <LoaderCircle className="spin" size={15} /> : <RefreshCw size={15} />}
+              {testConnection.isPending ? "কানেকশন টেস্ট হচ্ছে…" : "Test Connection (লাইভ টেস্ট)"}
+            </button>
+
+            <button
+              type="button"
+              className="button button-primary"
+              onClick={handleSave}
+              disabled={saveProvider.isPending || !label.trim() || !baseUrl.trim() || !apiKey.trim()}
+            >
+              {saveProvider.isPending ? <LoaderCircle className="spin" size={15} /> : <ShieldCheck size={15} />}
+              {saveProvider.isPending ? "সেভ ও সিঙ্ক হচ্ছে…" : "Save & Connect Provider"}
+            </button>
+          </div>
+        </form>
+      </section>
+
+      {customProviders.length > 0 && (
+        <section style={{ marginTop: "20px" }}>
+          <div style={{ marginBottom: "12px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <h3 style={{ margin: 0, fontSize: "16px", fontWeight: 700 }}>
+              Connected Custom Bot APIs ({customProviders.length})
+            </h3>
+          </div>
+          <div className="connection-grid">
+            {customProviders.map((p) => {
+              const liveBal = customBalances[p.provider];
+              return (
+                <div key={p.provider} className="admin-panel connection-card">
+                  <div className="panel-top">
+                    <div>
+                      <h2>{p.label}</h2>
+                      <p style={{ fontFamily: "monospace", fontSize: "11px", wordBreak: "break-all" }}>
+                        {p.baseUrl}
+                      </p>
+                    </div>
+                    <span className="status-chip status-fulfilled">
+                      <i /> ACTIVE
+                    </span>
+                  </div>
+
+                  <div className="key-callout">
+                    <ShieldCheck size={16} />
+                    <span>Slug: <code>{p.provider}</code> · Encrypted AES-256-GCM Storage</span>
+                  </div>
+
+                  <div className="connection-health" style={{ marginTop: "12px" }}>
+                    <div className="panel-top">
+                      <div>
+                        <h3>Wallet Balance</h3>
+                        <p>লাইভ ওয়ালেট ব্যালেন্স</p>
+                      </div>
+                      <span className="health-pulse"><i /></span>
+                    </div>
+
+                    {liveBal ? (
+                      <div className="balance-value">
+                        <small>{liveBal.currency} balance</small>
+                        <strong>{liveBal.amount.toFixed(2)}</strong>
+                      </div>
+                    ) : (
+                      <div className="balance-empty">
+                        <Wallet size={20} />
+                        <b>Balance চেক করুন</b>
+                      </div>
+                    )}
+
+                    <div style={{ display: "flex", gap: "8px", marginTop: "12px" }}>
+                      <button
+                        className="button button-light"
+                        style={{ flex: 1 }}
+                        disabled={checkingBalance === p.provider}
+                        onClick={() => void checkSingleBalance(p.provider)}
+                      >
+                        {checkingBalance === p.provider ? (
+                          <LoaderCircle className="spin" size={14} />
+                        ) : (
+                          <RefreshCw size={14} />
+                        )}
+                        Check Balance
+                      </button>
+
+                      <button
+                        className="button button-light"
+                        style={{ flex: 1 }}
+                        disabled={syncSingle.isPending}
+                        onClick={() => syncSingle.mutate({ provider: p.provider })}
+                        title="এই বটের সব প্রোডাক্ট ক্যাটালগে সিঙ্ক করুন"
+                      >
+                        <RefreshCw className={syncSingle.isPending ? "spin" : ""} size={14} />
+                        Sync Catalog
+                      </button>
+                    </div>
+                  </div>
+
+                  <div style={{ marginTop: "16px", borderTop: "1px solid var(--line, #e2e8f0)", paddingTop: "12px", display: "flex", justifyContent: "flex-end" }}>
+                    <button
+                      className="button button-light"
+                      style={{ color: "#ef4444", fontSize: "11px", padding: "6px 10px" }}
+                      onClick={() => {
+                        if (confirm(`আপনি কি নিশ্চিত যে "${p.label}" সংযোগ বিচ্ছিন্ন এবং মুছে ফেলতে চান?`)) {
+                          deleteProvider.mutate({ provider: p.provider });
+                        }
+                      }}
+                      disabled={deleteProvider.isPending}
+                    >
+                      <Trash2 size={13} style={{ marginRight: "4px" }} />
+                      Disconnect & Remove
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
+    </div>
+  );
 }
 
 function ConnectionSection() {
   const { data: status, isLoading } = trpc.shop.admin.providers.status.useQuery();
-  const connected = Boolean(status?.acczone.configured || status?.couponshops.configured);
-  return <><div className="admin-heading"><div><div className="eyebrow">SERVER-SIDE PROVIDERS</div><h1>API connections</h1><p>AccZone ও CouponShops-এর আলাদা key যোগ করুন। যেকোনো একটি catalog sync করতে তার নিজস্ব verified key লাগবে।</p></div><span className={`status-chip ${connected ? "status-fulfilled" : "status-awaiting_payment"}`}><i /> {isLoading ? "Checking…" : connected ? "CONNECTED" : "NOT CONNECTED"}</span></div>
-    <div className="connection-grid"><ProviderKeyCard provider="acczone" status={status?.acczone} /><ProviderKeyCard provider="couponshops" status={status?.couponshops} /></div>
-    <div className="security-footnote"><ShieldCheck size={15} /><span>AccZone key শুধু server-এর required `apikey` request-এ; CouponShops key কেবল server-side `X-API-Key` header-এ যায়। দুই key encrypted-at-rest, আলাদা purpose-derived key দিয়ে; plaintext browser bundle/response/log/Git-এ নয়।</span></div>
-  </>;
+  const providersQuery = trpc.shop.admin.providers.list.useQuery();
+  const anyConnected = Boolean(
+    status?.acczone.configured ||
+    status?.couponshops.configured ||
+    status?.aitoolify.configured ||
+    (providersQuery.data && providersQuery.data.some(p => p.configured))
+  );
+
+  return (
+    <>
+      <div className="admin-heading">
+        <div>
+          <div className="eyebrow">SERVER-SIDE PROVIDERS & BOTS</div>
+          <h1>API connections & Bot Resellers</h1>
+          <p>
+            AccZone, CouponShops, Aitoolify Studio Bot এবং যেকোনো Baku Bob / Bot Reseller v1 API সরাসরি কানেক্ট করুন।
+          </p>
+        </div>
+        <span className={`status-chip ${anyConnected ? "status-fulfilled" : "status-awaiting_payment"}`}>
+          <i /> {isLoading ? "Checking…" : anyConnected ? "CONNECTED" : "NOT CONNECTED"}
+        </span>
+      </div>
+
+      <div className="connection-grid">
+        <ProviderKeyCard
+          provider="acczone"
+          title="AccZone API key"
+          description="Balance, catalog ও activation purchase"
+          status={status?.acczone}
+        />
+        <ProviderKeyCard
+          provider="couponshops"
+          title="CouponShops API key"
+          description="Coupon catalog, INR/USDT wallet ও idempotent order"
+          status={status?.couponshops}
+        />
+        <ProviderKeyCard
+          provider="aitoolify"
+          title="Aitoolify Studio Bot"
+          description="Official Bot Reseller API (GET /balance, GET /products, POST /order)"
+          defaultBaseUrl="https://bot.aitoolifystudio.io/api/reseller/v1"
+          status={status?.aitoolify}
+        />
+      </div>
+
+      <CustomBotProviderManager />
+
+      <div className="security-footnote" style={{ marginTop: "24px" }}>
+        <ShieldCheck size={15} />
+        <span>
+          সব API key এবং credentials সার্ভারে AES-256-GCM অ্যালগরিদমে এনক্রিপ্ট হয়ে সংরক্ষিত থাকে। কোনো সিক্রেট কি ব্রাউজার বান্ডল, রেসপন্স বা লগ-এ প্রকাশিত হয় না।
+        </span>
+      </div>
+    </>
+  );
 }
 
 function HistorySection() {

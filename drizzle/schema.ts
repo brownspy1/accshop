@@ -46,7 +46,11 @@ export const activationServices = pgTable("activation_services", {
 
 export const providerCredentials = pgTable("provider_credentials", {
   id: serial("id").primaryKey(),
-  provider: varchar("provider", { length: 32 }).notNull().default("acczone").unique(),
+  provider: varchar("provider", { length: 64 }).notNull().default("acczone").unique(),
+  label: varchar("label", { length: 128 }),
+  baseUrl: varchar("baseUrl", { length: 512 }),
+  providerType: varchar("providerType", { length: 32 }).notNull().default("bot_reseller"),
+  isActive: integer("isActive").notNull().default(1),
   ciphertext: text("ciphertext").notNull(),
   nonce: varchar("nonce", { length: 32 }).notNull(),
   authTag: varchar("authTag", { length: 32 }).notNull(),

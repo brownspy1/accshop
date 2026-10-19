@@ -6,7 +6,8 @@ import { z } from "zod";
 import { activationServices, customerAccounts, orderItems, orders, providerCredentials, storeSettings } from "../drizzle/schema";
 import { AcczoneError, buyActivation, getBalance, getHistory, getServices, hasApiKey, testAndSaveApiKey } from "./acczone";
 import { CouponShopsError, createCouponOrder, getCouponBalance, getCouponServices, retrieveCouponOrder, verifyAndSaveCouponShopsKey } from "./couponshops";
-import { getProviderApiKey, getProviderCredentialStatus, hasProviderApiKey, verifyAndSaveProviderApiKey, type ShopProvider } from "./providerCredentials";
+import { BotResellerError, createBotResellerOrder, getBotResellerBalance, normalizeBotResellerUrl, retrieveBotResellerOrder, testBotResellerConnection } from "./botReseller";
+import { deleteProviderCredentials, getProviderApiKey, getProviderCredentialStatus, getProviderDetails, hasProviderApiKey, listAllConfiguredProviders, saveBotResellerProvider, verifyAndSaveProviderApiKey, type ShopProvider } from "./providerCredentials";
 import { getDb } from "./db";
 import { mysqlAffectedRows, mysqlInsertId } from "./dbResults";
 import { refreshCatalogIfNeeded, SUPPLIER_STOCK_MAX_AGE_MS, syncProviderCatalog } from "./catalogSync";
@@ -168,6 +169,16 @@ function couponCodes(order: Awaited<ReturnType<typeof createCouponOrder>>, servi
     id: `${order.orderId}-${index}`,
     serviceKey,
     codeType: "coupon",
+    codeValue,
+    usedAt: "",
+  }));
+}
+
+function botResellerCodes(delivered: string[], orderRef: string, serviceKey: string) {
+  return delivered.map((codeValue, index) => ({
+    id: `${orderRef}-${index}`,
+    serviceKey,
+    codeType: "credential",
     codeValue,
     usedAt: "",
   }));
@@ -368,7 +379,7 @@ export const shopRouter = router({
       const wanted = Array.from(merged, ([serviceKey, quantity]) => ({ serviceKey, quantity }));
       const candidateProviders = await db.select({ provider: activationServices.provider }).from(activationServices)
         .where(inArray(activationServices.serviceKey, wanted.map(item => item.serviceKey)));
-      await refreshCatalogIfNeeded(candidateProviders.map(row => row.provider).filter((provider): provider is ShopProvider => provider === "acczone" || provider === "couponshops"));
+      await refreshCatalogIfNeeded(candidateProviders.map(row => row.provider));
       const orderNo = `AZ-${newOrderNo()}`;
       try {
         const created = await db.transaction(async tx => {
@@ -570,15 +581,15 @@ export const shopRouter = router({
       if (!db) throw new Error("Database is not available");
       const all = await db.select({ id: orders.id, status: orders.status, totalAmount: orders.totalAmount }).from(orders).orderBy(desc(orders.createdAt)).limit(1000);
       const services = await db.select({ key: activationServices.serviceKey }).from(activationServices);
-      const creds = await Promise.all([hasProviderApiKey("acczone"), hasProviderApiKey("couponshops")]);
+      const allProviders = await listAllConfiguredProviders();
       return {
         orderCount: all.length,
         awaitingPayment: all.filter(o => o.status === "awaiting_payment").length,
         fulfilledCount: all.filter(o => o.status === "fulfilled").length,
         grossPaid: Number(all.filter(o => ["paid", "fulfilling", "fulfilled", "partially_fulfilled", "fulfillment_unknown", "fulfillment_failed"].includes(o.status)).reduce((sum, o) => sum + o.totalAmount, 0).toFixed(2)),
         serviceCount: services.length,
-        apiKeyConfigured: creds.some(Boolean),
-        providersConfigured: { acczone: creds[0], couponshops: creds[1] },
+        apiKeyConfigured: allProviders.some(p => p.configured),
+        providersConfigured: Object.fromEntries(allProviders.map(p => [p.provider, p.configured])),
       };
     }),
     services: router({
@@ -593,11 +604,13 @@ export const shopRouter = router({
           imageUrl: row.imageUrl?.trim() ? row.imageUrl : getProductThumbnail(row.serviceKey, row.name),
         }));
       }),
-      sync: adminProcedure.input(z.object({ provider: z.enum(["acczone", "couponshops"]) })).mutation(async ({ input }) => {
+      sync: adminProcedure.input(z.object({ provider: z.string().min(1) })).mutation(async ({ input }) => {
         return syncProviderCatalog(input.provider);
       }),
       syncAll: adminProcedure.mutation(async () => {
-        const providers: ShopProvider[] = ["acczone", "couponshops"];
+        const allProviders = await listAllConfiguredProviders();
+        const activeProviders = allProviders.filter(p => p.configured && p.isActive);
+        const providers = activeProviders.length ? activeProviders.map(p => p.provider) : ["acczone", "couponshops"];
         const results = await Promise.allSettled(
           providers.map(async (p) => {
             const hasKey = await hasProviderApiKey(p);
@@ -812,35 +825,115 @@ export const shopRouter = router({
       status: adminProcedure.query(async () => ({
         acczone: await getProviderCredentialStatus("acczone"),
         couponshops: await getProviderCredentialStatus("couponshops"),
+        aitoolify: await getProviderCredentialStatus("aitoolify"),
       })),
+      list: adminProcedure.query(async () => {
+        return listAllConfiguredProviders();
+      }),
+      testCustom: adminProcedure.input(z.object({
+        baseUrl: z.string().trim().min(5, "API URL দিন"),
+        apiKey: z.string().trim().min(1, "API Key দিন"),
+      })).mutation(async ({ input }) => {
+        try {
+          const res = await testBotResellerConnection(input.baseUrl, input.apiKey);
+          return {
+            success: true,
+            balance: res.balance,
+            currency: res.currency,
+            message: `Connection successful! Balance: ${res.balance} ${res.currency}`,
+          };
+        } catch (err: any) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: err.message || "API Connection টেস্ট ব্যর্থ হয়েছে",
+          });
+        }
+      }),
+      configureCustom: adminProcedure.input(z.object({
+        provider: z.string().trim().min(2).max(32).regex(/^[a-z0-9_-]+$/i, "Provider ID-তে শুধুমাত্র ছোট হাতের অক্ষর, সংখ্যা, _ এবং - ব্যবহার করুন"),
+        label: z.string().trim().min(1).max(128),
+        baseUrl: z.string().trim().min(5).max(512),
+        apiKey: z.string().trim().min(1).max(2048),
+      })).mutation(async ({ input }) => {
+        try {
+          const saved = await saveBotResellerProvider(input);
+          void syncProviderCatalog(saved.provider).catch(e => console.warn(`Auto-sync after provider add failed:`, e));
+          return {
+            success: true,
+            provider: saved.provider,
+            label: saved.label,
+            amount: saved.balance,
+            currency: saved.currency,
+          };
+        } catch (err: any) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: err.message || "Provider সংরক্ষণ ব্যর্থ হয়েছে",
+          });
+        }
+      }),
+      delete: adminProcedure.input(z.object({
+        provider: z.string().trim().min(1),
+      })).mutation(async ({ input }) => {
+        return deleteProviderCredentials(input.provider);
+      }),
       configure: adminProcedure.input(z.object({
-        provider: z.enum(["acczone", "couponshops"]),
-        apiKey: z.string().trim().min(8).max(2048),
+        provider: z.string().trim().min(1),
+        apiKey: z.string().trim().min(1).max(2048),
+        baseUrl: z.string().trim().optional(),
+        label: z.string().trim().optional(),
       })).mutation(async ({ input }) => {
         try {
           if (input.provider === "acczone") {
             const account = await testAndSaveApiKey(input.apiKey);
             return { success: true, provider: input.provider, amount: account.balance, currency: "provider units", balanceInr: null, rateInrPerUsdt: null, username: account.username };
           }
-          const account = await verifyAndSaveCouponShopsKey(input.apiKey);
-          return { success: true, provider: input.provider, amount: account.balanceUsdt, currency: "USDT", balanceInr: account.balanceInr, rateInrPerUsdt: account.rateInrPerUsdt, username: "" };
+          if (input.provider === "couponshops") {
+            const account = await verifyAndSaveCouponShopsKey(input.apiKey);
+            return { success: true, provider: input.provider, amount: account.balanceUsdt, currency: "USDT", balanceInr: account.balanceInr, rateInrPerUsdt: account.rateInrPerUsdt, username: "" };
+          }
+          if (input.provider === "aitoolify") {
+            const saved = await saveBotResellerProvider({
+              provider: "aitoolify",
+              label: input.label || "Aitoolify Studio Bot",
+              baseUrl: input.baseUrl || "https://bot.aitoolifystudio.io/api/reseller/v1",
+              apiKey: input.apiKey,
+            });
+            void syncProviderCatalog("aitoolify").catch(e => console.warn("Auto-sync aitoolify failed:", e));
+            return { success: true, provider: "aitoolify", amount: saved.balance, currency: saved.currency, balanceInr: null, rateInrPerUsdt: null, username: "" };
+          }
+          // Generic bot reseller
+          const saved = await saveBotResellerProvider({
+            provider: input.provider,
+            label: input.label || input.provider,
+            baseUrl: input.baseUrl || "",
+            apiKey: input.apiKey,
+          });
+          void syncProviderCatalog(input.provider).catch(e => console.warn(`Auto-sync ${input.provider} failed:`, e));
+          return { success: true, provider: input.provider, amount: saved.balance, currency: saved.currency, balanceInr: null, rateInrPerUsdt: null, username: "" };
         } catch (error) {
           console.error(`[Provider Configure Error (${input.provider})]:`, error);
-          if (error instanceof AcczoneError || error instanceof CouponShopsError) throw new Error(error.message);
+          if (error instanceof AcczoneError || error instanceof CouponShopsError || error instanceof BotResellerError) throw new Error(error.message);
           const message = error instanceof Error ? error.message : String(error);
           throw new Error(`${input.provider} API key যাচাই/সংরক্ষণ ব্যর্থ হয়েছে: ${message}`);
         }
       }),
-      balance: adminProcedure.input(z.object({ provider: z.enum(["acczone", "couponshops"]) })).query(async ({ input }) => {
+      balance: adminProcedure.input(z.object({ provider: z.string().min(1) })).query(async ({ input }) => {
         try {
           if (input.provider === "acczone") {
             const account = await getBalance();
             return { provider: input.provider, amount: account.balance, currency: "provider units", balanceInr: null, rateInrPerUsdt: null, username: account.username };
           }
-          const account = await getCouponBalance();
-          return { provider: input.provider, amount: account.balanceUsdt, currency: "USDT", balanceInr: account.balanceInr, rateInrPerUsdt: account.rateInrPerUsdt, username: "" };
+          if (input.provider === "couponshops") {
+            const account = await getCouponBalance();
+            return { provider: input.provider, amount: account.balanceUsdt, currency: "USDT", balanceInr: account.balanceInr, rateInrPerUsdt: account.rateInrPerUsdt, username: "" };
+          }
+          const details = await getProviderDetails(input.provider);
+          if (!details || !details.apiKey) throw new Error(`${input.provider} API key কনফিগার করা নেই।`);
+          const res = await getBotResellerBalance(details.baseUrl || (input.provider === "aitoolify" ? "https://bot.aitoolifystudio.io/api/reseller/v1" : ""), details.apiKey);
+          return { provider: input.provider, amount: res.balance, currency: res.currency, balanceInr: null, rateInrPerUsdt: null, username: "" };
         } catch (error) {
-          if (error instanceof AcczoneError || error instanceof CouponShopsError) throw new Error(error.message);
+          if (error instanceof AcczoneError || error instanceof CouponShopsError || error instanceof BotResellerError) throw new Error(error.message);
           throw new Error(`${input.provider} balance পাওয়া যায়নি। API connection যাচাই করুন।`);
         }
       }),
@@ -917,7 +1010,7 @@ export const shopRouter = router({
         const preflightLines = await db.select({ provider: orderItems.provider }).from(orderItems).where(eq(orderItems.orderId, input.orderId));
         if (!preflightLines.length) throw new Error("Order-এ কোনো item পাওয়া যায়নি।");
         for (const provider of new Set(preflightLines.map(line => line.provider))) {
-          if (!["acczone", "couponshops"].includes(provider) || !await hasProviderApiKey(provider as ShopProvider)) {
+          if (!await hasProviderApiKey(provider)) {
             throw new Error(`${provider} API key verified নয়; fulfillment শুরু করার আগে Admin Connections-এ provider configure করুন।`);
           }
         }
@@ -947,12 +1040,13 @@ export const shopRouter = router({
           }
           const preparedLines = [];
           for (const line of retryLines) {
-            if (line.provider !== "couponshops") {
+            if (line.provider === "acczone") {
               preparedLines.push(line);
               continue;
             }
             const startNewAttempt = ["fulfillment_failed", "partially_fulfilled"].includes(row.status) && line.fulfillmentState === "failed";
-            const clientOrderId = startNewAttempt || !line.providerClientOrderId ? `CS-${randomUUID()}` : line.providerClientOrderId;
+            const prefix = line.provider === "couponshops" ? "CS" : "BOT";
+            const clientOrderId = startNewAttempt || !line.providerClientOrderId ? `${prefix}-${randomUUID()}` : line.providerClientOrderId;
             await tx.update(orderItems).set({
               providerClientOrderId: clientOrderId,
               providerOrderId: startNewAttempt ? null : line.providerOrderId,
@@ -964,7 +1058,7 @@ export const shopRouter = router({
           const changed = await tx.update(orders).set({ status: "fulfilling", updatedAt: new Date() })
             .where(and(eq(orders.id, row.id), eq(orders.status, row.status)));
           if (mysqlAffectedRows(changed) !== 1) throw new Error("অন্য admin এই order ইতিমধ্যে পরিবর্তন করেছেন।");
-          return { lines: preparedLines, completedCount: orderLines.filter(line => line.fulfillmentState === "fulfilled").length };
+          return { lines: preparedLines, completedCount: orderLines.filter(line => line.fulfillmentState === "fulfilled").length, customerEmail: row.customerEmail };
         });
         let state: "fulfilled" | "partially_fulfilled" | "fulfillment_failed" | "fulfillment_unknown" = "fulfilled";
         let completedCount = prepared.completedCount;
@@ -1012,6 +1106,74 @@ export const shopRouter = router({
               });
               completedCount += 1;
               continue;
+            } else if (line.provider !== "acczone") {
+              const providerDetails = await getProviderDetails(line.provider);
+              if (!providerDetails || !providerDetails.apiKey) {
+                throw new Error(`Provider ${line.provider}-এর API Key পাওয়া যায়নি। Admin Connections-এ key যাচাই করুন।`);
+              }
+              const baseUrl = providerDetails.baseUrl || "https://bot.aitoolifystudio.io/api/reseller/v1";
+              const botOrder = await createBotResellerOrder(baseUrl, providerDetails.apiKey, {
+                productId: line.providerServiceId || line.serviceKey,
+                quantity: line.quantity,
+                customerEmail: prepared.customerEmail || undefined,
+                idempotencyKey: line.providerClientOrderId || undefined,
+              });
+
+              const deliveredCodes = botResellerCodes(botOrder.delivered || [], botOrder.orderRef, line.serviceKey);
+              const duplicateCodes = !allUniqueCodes(deliveredCodes);
+
+              if (botOrder.status === "cancelled" || botOrder.status === "failed") {
+                await db.transaction(async tx => {
+                  await tx.update(orderItems).set({
+                    fulfillmentState: "failed",
+                    providerOrderId: botOrder.orderRef,
+                    providerStatus: botOrder.status,
+                    providerMessage: botOrder.message || botOrder.error || `${line.provider} cancelled/failed this order.`,
+                    updatedAt: new Date(),
+                  }).where(eq(orderItems.id, line.id));
+                  await tx.update(activationServices).set({
+                    reservedStock: sql`GREATEST(${activationServices.reservedStock} - ${line.quantity}, 0)`,
+                    updatedAt: new Date(),
+                  }).where(eq(activationServices.serviceKey, line.serviceKey));
+                });
+                state = completedCount > 0 ? "partially_fulfilled" : "fulfillment_failed";
+                break;
+              }
+
+              if (botOrder.status !== "completed" || deliveredCodes.length !== line.quantity || duplicateCodes) {
+                state = "fulfillment_unknown";
+                await db.update(orderItems).set({
+                  fulfillmentState: botOrder.status === "processing" ? "processing" : "unknown",
+                  providerOrderId: botOrder.orderRef,
+                  providerStatus: botOrder.status,
+                  resultCodes: deliveredCodes.length ? JSON.stringify(deliveredCodes) : null,
+                  providerMessage: botOrder.status === "processing"
+                    ? `${line.provider} accepted the order and is processing. Refresh this provider order in Admin.`
+                    : duplicateCodes
+                      ? `${line.provider} returned duplicate credential items; review before delivery.`
+                      : `${line.provider} delivered ${deliveredCodes.length} items (expected ${line.quantity}). Review provider order.`,
+                  updatedAt: new Date(),
+                }).where(eq(orderItems.id, line.id));
+                break;
+              }
+
+              await db.transaction(async tx => {
+                await tx.update(activationServices).set({
+                  stock: sql`GREATEST(${activationServices.stock} - ${line.quantity}, 0)`,
+                  reservedStock: sql`GREATEST(${activationServices.reservedStock} - ${line.quantity}, 0)`,
+                  updatedAt: new Date(),
+                }).where(eq(activationServices.serviceKey, line.serviceKey));
+                await tx.update(orderItems).set({
+                  fulfillmentState: "fulfilled",
+                  providerOrderId: botOrder.orderRef,
+                  providerStatus: botOrder.status,
+                  resultCodes: JSON.stringify(deliveredCodes),
+                  providerMessage: null,
+                  updatedAt: new Date(),
+                }).where(eq(orderItems.id, line.id));
+              });
+              completedCount += 1;
+              continue;
             }
             const results = await buyActivation(line.providerServiceId || line.serviceKey, line.quantity);
             if (results.length !== line.quantity) {
@@ -1035,13 +1197,13 @@ export const shopRouter = router({
             });
             completedCount += 1;
           } catch (error) {
-            const ambiguous = error instanceof AcczoneError || error instanceof CouponShopsError ? error.ambiguous : true;
+            const ambiguous = error instanceof AcczoneError || error instanceof CouponShopsError || error instanceof BotResellerError ? error.ambiguous : true;
             state = ambiguous ? "fulfillment_unknown" : completedCount > 0 ? "partially_fulfilled" : "fulfillment_failed";
             await db.transaction(async tx => {
               await tx.update(orderItems).set({
                 fulfillmentState: ambiguous ? "unknown" : "failed",
                 providerStatus: ambiguous ? "unknown" : "failed",
-                providerMessage: error instanceof AcczoneError || error instanceof CouponShopsError ? error.message : "Provider result is unclear; review provider history before retrying.",
+                providerMessage: error instanceof AcczoneError || error instanceof CouponShopsError || error instanceof BotResellerError ? error.message : "Provider result is unclear; review provider history before retrying.",
                 updatedAt: new Date(),
               }).where(eq(orderItems.id, line.id));
               if (!ambiguous) await tx.update(activationServices).set({
@@ -1061,13 +1223,87 @@ export const shopRouter = router({
         if (!db) throw new Error("Database is not available");
         const [line] = await db.select().from(orderItems).where(and(eq(orderItems.id, input.itemId), eq(orderItems.orderId, input.orderId))).limit(1);
         const [parent] = await db.select().from(orders).where(eq(orders.id, input.orderId)).limit(1);
-        if (!line || line.provider !== "couponshops" || !parent) throw new Error("CouponShops order item পাওয়া যায়নি।");
+        if (!line || line.provider === "acczone" || !parent) throw new Error("Refresh-যোগ্য provider order item পাওয়া যায়নি।");
         if (!["fulfillment_unknown", "fulfilling"].includes(parent.status) || !["unknown", "processing"].includes(line.fulfillmentState)) {
-          throw new Error("শুধু uncertain/processing CouponShops order refresh করা যাবে।");
+          throw new Error("শুধু uncertain/processing provider order refresh করা যাবে।");
         }
         if (parent.status === "fulfilling" && Date.now() - new Date(parent.updatedAt).getTime() < 6 * 60_000) {
           throw new Error("Fulfillment request সক্রিয় থাকতে পারে। অন্তত 6 মিনিট অপেক্ষা করে provider order refresh করুন।");
         }
+
+        if (line.provider !== "couponshops") {
+          const providerDetails = await getProviderDetails(line.provider);
+          if (!providerDetails || !providerDetails.apiKey) {
+            throw new Error(`Provider ${line.provider}-এর API Key পাওয়া যায়নি।`);
+          }
+          const baseUrl = providerDetails.baseUrl || "https://bot.aitoolifystudio.io/api/reseller/v1";
+          if (!line.providerOrderId && !line.providerClientOrderId) {
+            throw new Error("Saved Bot order identity অনুপস্থিত; manual provider support প্রয়োজন।");
+          }
+          const remote = line.providerOrderId
+            ? await retrieveBotResellerOrder(baseUrl, providerDetails.apiKey, line.providerOrderId)
+            : await createBotResellerOrder(baseUrl, providerDetails.apiKey, {
+                productId: line.providerServiceId || line.serviceKey,
+                quantity: line.quantity,
+                customerEmail: parent.customerEmail,
+                idempotencyKey: line.providerClientOrderId || undefined,
+              });
+          const codes = botResellerCodes(remote.delivered || [], remote.orderRef, line.serviceKey);
+          const complete = remote.status === "completed" && codes.length === line.quantity && allUniqueCodes(codes);
+          const reconciliation = await db.transaction(async tx => {
+            const [lockedParent] = await tx.select().from(orders).where(eq(orders.id, input.orderId)).for("update");
+            const [lockedLine] = await tx.select().from(orderItems).where(and(eq(orderItems.id, input.itemId), eq(orderItems.orderId, input.orderId))).for("update");
+            if (!lockedParent || !lockedLine) throw new Error("Order reconciliation row পাওয়া যায়নি।");
+            if (lockedLine.fulfillmentState === "fulfilled") return { status: lockedParent.status, providerStatus: lockedLine.providerStatus, refreshed: false };
+            if (!["unknown", "processing"].includes(lockedLine.fulfillmentState)) throw new Error("Order item ইতিমধ্যে অন্য admin পরিবর্তন করেছেন।");
+            if (remote.status === "cancelled" || remote.status === "failed") {
+              await tx.update(orderItems).set({
+                fulfillmentState: "failed",
+                providerOrderId: remote.orderRef,
+                providerStatus: remote.status,
+                resultCodes: null,
+                providerMessage: remote.message || remote.error || `${lockedLine.provider} cancelled/failed this order.`,
+                updatedAt: new Date(),
+              }).where(eq(orderItems.id, lockedLine.id));
+              await tx.update(activationServices).set({
+                reservedStock: sql`GREATEST(${activationServices.reservedStock} - ${lockedLine.quantity}, 0)`,
+                updatedAt: new Date(),
+              }).where(eq(activationServices.serviceKey, lockedLine.serviceKey));
+            } else if (complete) {
+              await tx.update(orderItems).set({
+                fulfillmentState: "fulfilled",
+                providerOrderId: remote.orderRef,
+                providerStatus: remote.status,
+                resultCodes: JSON.stringify(codes),
+                providerMessage: null,
+                updatedAt: new Date(),
+              }).where(eq(orderItems.id, lockedLine.id));
+              await tx.update(activationServices).set({
+                stock: sql`GREATEST(${activationServices.stock} - ${lockedLine.quantity}, 0)`,
+                reservedStock: sql`GREATEST(${activationServices.reservedStock} - ${lockedLine.quantity}, 0)`,
+                updatedAt: new Date(),
+              }).where(eq(activationServices.serviceKey, lockedLine.serviceKey));
+            } else {
+              await tx.update(orderItems).set({
+                fulfillmentState: remote.status === "processing" ? "processing" : "unknown",
+                providerOrderId: remote.orderRef,
+                providerStatus: remote.status,
+                resultCodes: codes.length ? JSON.stringify(codes) : null,
+                providerMessage: remote.status === "processing"
+                  ? `${lockedLine.provider} is still processing this provider order. Refresh later.`
+                  : `${lockedLine.provider} returned incomplete/duplicate codes; review before delivery.`,
+                updatedAt: new Date(),
+              }).where(eq(orderItems.id, lockedLine.id));
+            }
+            const allLines = await tx.select().from(orderItems).where(eq(orderItems.orderId, lockedParent.id));
+            const nextStatus = couponStatusToOrderStatus(allLines);
+            await tx.update(orders).set({ status: nextStatus, updatedAt: new Date() }).where(eq(orders.id, lockedParent.id));
+            return { status: nextStatus, providerStatus: remote.status, refreshed: true };
+          });
+          if (reconciliation.status === "fulfilled") queueCredentialEmail(input.orderId);
+          return reconciliation;
+        }
+
         if (!line.providerClientOrderId || !line.providerServiceId) throw new Error("Saved idempotent CouponShops identity অনুপস্থিত; manual provider support প্রয়োজন।");
         const remote = line.providerOrderId
           ? await retrieveCouponOrder(line.providerOrderId)
