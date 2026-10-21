@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { BrandLogoSquircle } from "./BrandLogos";
 import { formatMoney, formatPerMonth, formatBn, parseProductMeta, StructuredProductMeta } from "@/lib/shop";
-import { ShoppingBag, ShieldAlert, Sparkles, Check } from "lucide-react";
+import { ShoppingBag, ShieldAlert, Sparkles, Check, Zap, Flame } from "lucide-react";
 import { toast } from "sonner";
 
 export interface VoucherProductItem {
@@ -13,6 +13,13 @@ export interface VoucherProductItem {
   stock: number;
   stockFresh: boolean;
   retailPrice: number;
+  warrantyText?: string | null;
+  warrantyDays?: number | null;
+  isFlashSale?: number | boolean | null;
+  flashSalePrice?: number | null;
+  flashSaleEndsAt?: Date | string | null;
+  tags?: string | null;
+  slug?: string | null;
   priceReviewRequired?: number | boolean;
   quantityTiers?: Array<{ minQuantity: number; maxQuantity: number }>;
   maxAllowedQuantity?: number;
@@ -45,7 +52,8 @@ export default function VoucherCard({
   const meta: StructuredProductMeta = parseProductMeta(
     activeVariant.serviceKey,
     activeVariant.name,
-    activeVariant.description
+    activeVariant.description,
+    activeVariant as any
   );
 
   const isOutOfStock = activeVariant.stock < 1;
@@ -100,8 +108,16 @@ export default function VoucherCard({
             </div>
           </div>
 
-          {/* Badges: জনপ্রিয় (Marigold) or নতুন (Jade Mist) */}
-          {meta.isPopular && (
+          {/* Badges: ফ্ল্যাশ সেল (Red), জনপ্রিয় (Marigold) or নতুন (Jade Mist) */}
+          {meta.isFlashSale && meta.flashSalePrice ? (
+            <span
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold tracking-tight shadow-sm shrink-0 text-white animate-pulse"
+              style={{ backgroundColor: "#E53E3E" }}
+            >
+              <Zap size={12} fill="currentColor" />
+              ফ্ল্যাশ সেল
+            </span>
+          ) : meta.isPopular ? (
             <span
               className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold tracking-tight shadow-2xs shrink-0"
               style={{ backgroundColor: "var(--marigold)", color: "var(--bottle)" }}
@@ -109,8 +125,7 @@ export default function VoucherCard({
               <Sparkles size={12} />
               জনপ্রিয়
             </span>
-          )}
-          {meta.isNew && !meta.isPopular && (
+          ) : meta.isNew ? (
             <span
               className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold tracking-tight shrink-0 border"
               style={{
@@ -121,7 +136,13 @@ export default function VoucherCard({
             >
               নতুন
             </span>
-          )}
+          ) : meta.tags && meta.tags.length > 0 ? (
+            <span
+              className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold tracking-tight shrink-0 border bg-emerald-50 text-emerald-800 border-emerald-200"
+            >
+              {meta.tags[0]}
+            </span>
+          ) : null}
         </div>
 
         {/* Variant switch control if merged (e.g. নিজের অ্যাকাউন্টে vs রেডিমেড আইডি) */}
@@ -221,16 +242,29 @@ export default function VoucherCard({
       {/* Price Stub (Jade Mist Background) */}
       <div className="voucher-stub">
         <div className="flex flex-col min-w-0">
-          <div className="flex items-baseline gap-1.5">
-            <strong
-              className="font-display font-extrabold text-2xl sm:text-[28px] tracking-tight"
-              style={{ color: "var(--bottle)" }}
-            >
-              {formatMoney(activeVariant.retailPrice)}
-            </strong>
+          <div className="flex items-baseline gap-1.5 flex-wrap">
+            {meta.isFlashSale && meta.flashSalePrice ? (
+              <>
+                <strong
+                  className="font-display font-extrabold text-2xl sm:text-[28px] tracking-tight text-red-600"
+                >
+                  {formatMoney(meta.flashSalePrice)}
+                </strong>
+                <span className="text-xs line-through text-slate-400 font-bold">
+                  {formatMoney(activeVariant.retailPrice)}
+                </span>
+              </>
+            ) : (
+              <strong
+                className="font-display font-extrabold text-2xl sm:text-[28px] tracking-tight"
+                style={{ color: "var(--bottle)" }}
+              >
+                {formatMoney(activeVariant.retailPrice)}
+              </strong>
+            )}
           </div>
           <span className="text-[11px] sm:text-xs font-medium text-emerald-800/80">
-            {formatPerMonth(activeVariant.retailPrice, meta.durationMonths)}
+            {formatPerMonth(meta.isFlashSale && meta.flashSalePrice ? meta.flashSalePrice : activeVariant.retailPrice, meta.durationMonths)}
           </span>
         </div>
 

@@ -2,7 +2,7 @@ import React, { useEffect } from "react";
 import { BrandLogoSquircle } from "./BrandLogos";
 import { VoucherProductItem } from "./VoucherCard";
 import { formatMoney, formatPerMonth, parseProductMeta, StructuredProductMeta } from "@/lib/shop";
-import { X, Check, ShoppingBag, ShieldCheck, Zap, HelpCircle } from "lucide-react";
+import { X, Check, ShoppingBag, ShieldCheck, Zap, HelpCircle, Share2, Copy } from "lucide-react";
 import { toast } from "sonner";
 
 interface ProductDrawerProps {
@@ -49,10 +49,17 @@ export default function ProductDrawer({
   const meta: StructuredProductMeta = parseProductMeta(
     selectedVariant.serviceKey,
     selectedVariant.name,
-    selectedVariant.description
+    selectedVariant.description,
+    selectedVariant as any
   );
 
   const isOutOfStock = selectedVariant.stock < 1;
+
+  const handleCopyLink = () => {
+    const url = `${window.location.origin}/p/${selectedVariant.serviceKey}`;
+    void navigator.clipboard.writeText(url);
+    toast.success("প্রোডাক্ট লিংক কপি হয়েছে!");
+  };
 
   const handleBuy = () => {
     if (isOutOfStock) return;
@@ -97,29 +104,63 @@ export default function ProductDrawer({
               <h2 className="font-display font-bold text-xl leading-snug text-slate-900 truncate">
                 {selectedVariant.name}
               </h2>
-              <div className="flex items-center gap-2 mt-1">
+              <div className="flex items-center gap-2 mt-1 flex-wrap">
                 <span className="text-xs font-semibold px-2 py-0.5 rounded-md bg-white/80 text-emerald-900 border border-emerald-200">
                   {meta.durationText}
                 </span>
                 <span className="text-xs font-semibold px-2 py-0.5 rounded-md bg-white/80 text-slate-700 border border-slate-200">
                   {meta.accessTypeText}
                 </span>
+                {meta.warrantyText && (
+                  <span className="text-xs font-semibold px-2 py-0.5 rounded-md bg-white/80 text-emerald-800 border border-emerald-200">
+                    {meta.warrantyText}
+                  </span>
+                )}
               </div>
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={onClose}
-            className="w-9 h-9 rounded-full bg-white/80 border border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-white grid place-items-center transition-colors shrink-0"
-            aria-label="বন্ধ করুন"
-          >
-            <X size={18} />
-          </button>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button
+              type="button"
+              onClick={handleCopyLink}
+              className="w-9 h-9 rounded-full bg-white/80 border border-slate-200 text-slate-600 hover:text-emerald-700 hover:bg-white grid place-items-center transition-colors"
+              title="প্রোডাক্ট লিংক কপি করুন"
+              aria-label="শেয়ার করুন"
+            >
+              <Share2 size={16} />
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="w-9 h-9 rounded-full bg-white/80 border border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-white grid place-items-center transition-colors"
+              aria-label="বন্ধ করুন"
+            >
+              <X size={18} />
+            </button>
+          </div>
         </div>
 
         {/* Drawer Scrollable Body */}
         <div className="p-5 sm:p-6 overflow-y-auto flex-1 flex flex-col gap-6">
+          {/* Flash Sale Banner if active */}
+          {meta.isFlashSale && meta.flashSalePrice && (
+            <div className="flex items-center justify-between p-3.5 rounded-2xl bg-red-50 border border-red-200">
+              <div className="flex items-center gap-2.5">
+                <span className="w-8 h-8 rounded-full bg-red-600 text-white grid place-items-center shrink-0">
+                  <Zap size={16} fill="currentColor" />
+                </span>
+                <div>
+                  <b className="text-sm font-bold text-red-950 block">⚡ ফ্ল্যাশ সেল অফার!</b>
+                  <small className="text-xs text-red-700">সীমিত সময়ের বিশেষ মূল্যে পেয়ে যাচ্ছেন</small>
+                </div>
+              </div>
+              <div className="text-right">
+                <strong className="text-xl font-extrabold text-red-600 block">{formatMoney(meta.flashSalePrice)}</strong>
+                <span className="text-xs line-through text-slate-400 font-semibold">{formatMoney(selectedVariant.retailPrice)}</span>
+              </div>
+            </div>
+          )}
           {/* Variant Switcher Segmented Control */}
           {availableVariants.length > 1 && (
             <div className="flex flex-col gap-2">
@@ -153,11 +194,21 @@ export default function ProductDrawer({
             </div>
           )}
 
+          {/* Product Dynamic Description */}
+          {meta.customDescription && (
+            <div className="flex flex-col gap-2 p-4 rounded-2xl bg-slate-50 border border-slate-200">
+              <h3 className="font-display font-bold text-sm text-slate-900">প্রোডাক্ট বিবরণ ও ফিচার</h3>
+              <p className="text-xs sm:text-[13px] text-slate-700 leading-relaxed whitespace-pre-line">
+                {meta.customDescription}
+              </p>
+            </div>
+          )}
+
           {/* Section 1: কী পাবেন (Parsed bullets) */}
           <div className="flex flex-col gap-3">
             <h3 className="font-display font-bold text-base text-slate-900 flex items-center gap-2">
               <Zap size={18} className="text-emerald-700" />
-              কী কী পাবেন
+              কী কী সুবিধা পাবেন
             </h3>
             <ul className="flex flex-col gap-2.5">
               {meta.bullets.map((bullet, i) => (

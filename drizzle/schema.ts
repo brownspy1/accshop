@@ -1,4 +1,4 @@
-import { doublePrecision, foreignKey, index, integer, pgEnum, pgTable, serial, text, timestamp, varchar } from "drizzle-orm/pg-core";
+import { bigint, doublePrecision, foreignKey, index, integer, pgEnum, pgTable, serial, text, timestamp, varchar } from "drizzle-orm/pg-core";
 
 export const roleEnum = pgEnum("user_role", ["user", "admin"]);
 export const magicTokenPurposeEnum = pgEnum("magic_token_purpose", ["verify", "login"]);
@@ -40,6 +40,13 @@ export const activationServices = pgTable("activation_services", {
   retailPrice: doublePrecision("retailPrice").notNull().default(0),
   priceMarkupRatio: doublePrecision("priceMarkupRatio").notNull().default(0),
   priceReviewRequired: integer("priceReviewRequired").notNull().default(0),
+  warrantyText: varchar("warrantyText", { length: 128 }).default("ওয়ারেন্টি নেই"),
+  warrantyDays: integer("warrantyDays").default(0),
+  isFlashSale: integer("isFlashSale").notNull().default(0),
+  flashSalePrice: doublePrecision("flashSalePrice"),
+  flashSaleEndsAt: timestamp("flashSaleEndsAt"),
+  tags: text("tags").default(""),
+  slug: varchar("slug", { length: 160 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });
@@ -178,6 +185,19 @@ export const customProductInventory = pgTable("custom_product_inventory", {
   orderIdx: index("custom_inventory_order_idx").on(table.orderId),
 }));
 
+export const adminPasskeys = pgTable("admin_passkeys", {
+  id: serial("id").primaryKey(),
+  credentialId: text("credentialId").notNull().unique(),
+  publicKey: text("publicKey").notNull(),
+  counter: bigint("counter", { mode: "number" }).notNull().default(0),
+  deviceType: varchar("deviceType", { length: 32 }).default("singleDevice"),
+  backedUp: integer("backedUp").default(0),
+  transports: text("transports"),
+  name: varchar("name", { length: 128 }).notNull().default("Passkey"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  lastUsedAt: timestamp("lastUsedAt"),
+});
+
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
 export type ActivationService = typeof activationServices.$inferSelect;
@@ -187,3 +207,5 @@ export type ShopCustomerAccount = typeof customerAccounts.$inferSelect;
 export type ShopEmailOutbox = typeof emailOutbox.$inferSelect;
 export type CustomProductInventory = typeof customProductInventory.$inferSelect;
 export type InsertCustomProductInventory = typeof customProductInventory.$inferInsert;
+export type AdminPasskey = typeof adminPasskeys.$inferSelect;
+export type InsertAdminPasskey = typeof adminPasskeys.$inferInsert;

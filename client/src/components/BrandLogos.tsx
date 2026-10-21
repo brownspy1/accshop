@@ -1,4 +1,5 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
+import { Search, X, Check, Sparkles } from "lucide-react";
 
 interface BrandIconProps {
   className?: string;
@@ -321,22 +322,69 @@ export interface BrandIconPreset {
 }
 
 export const BRAND_ICON_PRESETS: BrandIconPreset[] = [
-  { id: "brand:gemini", label: "Google Gemini", brand: "gemini", category: "AI" },
-  { id: "brand:adobe", label: "Adobe Express / CC", brand: "adobe", category: "Design" },
-  { id: "brand:duolingo", label: "Duolingo Super", brand: "duolingo", category: "Learning" },
-  { id: "brand:pocket", label: "Pocket FM", brand: "pocket", category: "Audio" },
-  { id: "brand:chatgpt", label: "ChatGPT / OpenAI", brand: "chatgpt", category: "AI" },
-  { id: "brand:spotify", label: "Spotify Premium", brand: "spotify", category: "Music" },
+  // AI & Dev
+  { id: "brand:gemini", label: "Google Gemini", brand: "gemini", category: "AI & Dev" },
+  { id: "brand:chatgpt", label: "ChatGPT / OpenAI", brand: "chatgpt", category: "AI & Dev" },
+  { id: "brand:claude", label: "Claude AI", brand: "claude", category: "AI & Dev" },
+  { id: "brand:midjourney", label: "Midjourney AI", brand: "midjourney", category: "AI & Dev" },
+  { id: "brand:cursor", label: "Cursor AI IDE", brand: "cursor", category: "AI & Dev" },
+  { id: "brand:copilot", label: "GitHub Copilot", brand: "copilot", category: "AI & Dev" },
+  { id: "brand:perplexity", label: "Perplexity Pro", brand: "perplexity", category: "AI & Dev" },
+
+  // Streaming & Video
   { id: "brand:netflix", label: "Netflix UHD", brand: "netflix", category: "Streaming" },
-  { id: "brand:youtube", label: "YouTube Premium", brand: "youtube", category: "Video" },
-  { id: "brand:canva", label: "Canva Pro", brand: "canva", category: "Design" },
-  { id: "brand:telegram", label: "Telegram Premium", brand: "telegram", category: "Social" },
+  { id: "brand:youtube", label: "YouTube Premium", brand: "youtube", category: "Streaming" },
   { id: "brand:prime", label: "Amazon Prime Video", brand: "prime", category: "Streaming" },
-  { id: "brand:apple", label: "Apple One / Music", brand: "apple", category: "Services" },
-  { id: "brand:discord", label: "Discord Nitro", brand: "discord", category: "Gaming" },
-  { id: "brand:nordvpn", label: "NordVPN", brand: "nordvpn", category: "Security" },
+  { id: "brand:disney", label: "Disney+ Hotstar", brand: "disney", category: "Streaming" },
+  { id: "brand:crunchyroll", label: "Crunchyroll Anime", brand: "crunchyroll", category: "Streaming" },
+  { id: "brand:hoichoi", label: "Hoichoi TV", brand: "hoichoi", category: "Streaming" },
+  { id: "brand:chorki", label: "Chorki", brand: "chorki", category: "Streaming" },
+
+  // Audio & Music
+  { id: "brand:spotify", label: "Spotify Premium", brand: "spotify", category: "Audio" },
+  { id: "brand:pocket", label: "Pocket FM VIP", brand: "pocket", category: "Audio" },
+  { id: "brand:apple", label: "Apple Music / One", brand: "apple", category: "Audio" },
+  { id: "brand:tidal", label: "Tidal HiFi", brand: "tidal", category: "Audio" },
+
+  // Design & Creative
+  { id: "brand:adobe", label: "Adobe Express / CC", brand: "adobe", category: "Design" },
+  { id: "brand:canva", label: "Canva Pro", brand: "canva", category: "Design" },
+  { id: "brand:figma", label: "Figma Professional", brand: "figma", category: "Design" },
+  { id: "brand:freepik", label: "Freepik Premium", brand: "freepik", category: "Design" },
+  { id: "brand:envato", label: "Envato Elements", brand: "envato", category: "Design" },
+
+  // Security & VPN
+  { id: "brand:nordvpn", label: "NordVPN", brand: "nordvpn", category: "VPN & Security" },
+  { id: "brand:surfshark", label: "Surfshark VPN", brand: "surfshark", category: "VPN & Security" },
+  { id: "brand:expressvpn", label: "ExpressVPN", brand: "expressvpn", category: "VPN & Security" },
+  { id: "brand:proton", label: "Proton Unlimited", brand: "proton", category: "VPN & Security" },
+
+  // Productivity & Office
   { id: "brand:office", label: "Microsoft 365", brand: "office", category: "Productivity" },
-  { id: "brand:key", label: "Activation Key (Default)", brand: "key", category: "Other" },
+  { id: "brand:windows", label: "Windows 11 Pro", brand: "windows", category: "Productivity" },
+  { id: "brand:googleone", label: "Google One 2TB", brand: "googleone", category: "Productivity" },
+  { id: "brand:notion", label: "Notion Plus & AI", brand: "notion", category: "Productivity" },
+  { id: "brand:telegram", label: "Telegram Premium", brand: "telegram", category: "Productivity" },
+  { id: "brand:discord", label: "Discord Nitro", brand: "discord", category: "Productivity" },
+  { id: "brand:grammarly", label: "Grammarly Premium", brand: "grammarly", category: "Productivity" },
+  { id: "brand:tradingview", label: "TradingView Pro", brand: "tradingview", category: "Productivity" },
+
+  // Learning & Education
+  { id: "brand:duolingo", label: "Duolingo Super", brand: "duolingo", category: "Learning" },
+  { id: "brand:coursera", label: "Coursera Plus", brand: "coursera", category: "Learning" },
+  { id: "brand:udemy", label: "Udemy Business", brand: "udemy", category: "Learning" },
+
+  // Gaming
+  { id: "brand:steam", label: "Steam Wallet", brand: "steam", category: "Gaming" },
+  { id: "brand:playstation", label: "PlayStation Plus", brand: "playstation", category: "Gaming" },
+  { id: "brand:xbox", label: "Xbox Game Pass", brand: "xbox", category: "Gaming" },
+  { id: "brand:roblox", label: "Roblox Robux", brand: "roblox", category: "Gaming" },
+
+  // General & Badges
+  { id: "brand:star", label: "Featured Star", brand: "star", category: "General" },
+  { id: "brand:diamond", label: "VIP Diamond", brand: "diamond", category: "General" },
+  { id: "brand:shield", label: "Verified Shield", brand: "shield", category: "General" },
+  { id: "brand:key", label: "Activation Key (Default)", brand: "key", category: "General" },
 ];
 
 export function BrandLogoSquircle({
@@ -442,6 +490,96 @@ export function BrandLogoSquircle({
   } else if (b.includes("office") || b.includes("microsoft")) {
     bg = "#EAF2FC";
     fg = "#0078D4";
+  } else if (b.includes("claude") || b.includes("anthropic")) {
+    bg = "#F5EFE6";
+    fg = "#CC785C";
+  } else if (b.includes("midjourney")) {
+    bg = "#111827";
+    fg = "#F3F4F6";
+  } else if (b.includes("cursor")) {
+    bg = "#0B0F19";
+    fg = "#38BDF8";
+  } else if (b.includes("copilot") || b.includes("github")) {
+    bg = "#24292E";
+    fg = "#FFFFFF";
+  } else if (b.includes("perplexity")) {
+    bg = "#E0F2FE";
+    fg = "#0284C7";
+  } else if (b.includes("disney")) {
+    bg = "#0C1E40";
+    fg = "#1E90FF";
+  } else if (b.includes("crunchyroll")) {
+    bg = "#FFF5EA";
+    fg = "#F47521";
+  } else if (b.includes("hoichoi")) {
+    bg = "#FFECEE";
+    fg = "#E50914";
+  } else if (b.includes("chorki")) {
+    bg = "#FFF3E0";
+    fg = "#FB8C00";
+  } else if (b.includes("tidal")) {
+    bg = "#000000";
+    fg = "#00FFFF";
+  } else if (b.includes("figma")) {
+    bg = "#F8F2FF";
+    fg = "#A259FF";
+  } else if (b.includes("freepik")) {
+    bg = "#EBF3FF";
+    fg = "#1273EB";
+  } else if (b.includes("envato")) {
+    bg = "#EEF9EB";
+    fg = "#82B541";
+  } else if (b.includes("surfshark")) {
+    bg = "#E2F8F6";
+    fg = "#1EA896";
+  } else if (b.includes("expressvpn")) {
+    bg = "#FCE8E8";
+    fg = "#DA3634";
+  } else if (b.includes("proton")) {
+    bg = "#EEF0FF";
+    fg = "#6D4AFF";
+  } else if (b.includes("windows")) {
+    bg = "#E8F4FC";
+    fg = "#00ADEF";
+  } else if (b.includes("googleone")) {
+    bg = "#EEF5FE";
+    fg = "#4285F4";
+  } else if (b.includes("notion")) {
+    bg = "#F7F6F3";
+    fg = "#000000";
+  } else if (b.includes("grammarly")) {
+    bg = "#E9F9F0";
+    fg = "#15C39A";
+  } else if (b.includes("tradingview")) {
+    bg = "#131722";
+    fg = "#2962FF";
+  } else if (b.includes("coursera")) {
+    bg = "#E8F1FC";
+    fg = "#0056D2";
+  } else if (b.includes("udemy")) {
+    bg = "#F7ECFF";
+    fg = "#A435F0";
+  } else if (b.includes("steam")) {
+    bg = "#171A21";
+    fg = "#66C0F4";
+  } else if (b.includes("playstation")) {
+    bg = "#003791";
+    fg = "#FFFFFF";
+  } else if (b.includes("xbox")) {
+    bg = "#0E7A0D";
+    fg = "#FFFFFF";
+  } else if (b.includes("roblox")) {
+    bg = "#111827";
+    fg = "#FFFFFF";
+  } else if (b.includes("star")) {
+    bg = "#FEF9C3";
+    fg = "#CA8A04";
+  } else if (b.includes("diamond")) {
+    bg = "#E0F2FE";
+    fg = "#0284C7";
+  } else if (b.includes("shield")) {
+    bg = "#DCFCE7";
+    fg = "#16A34A";
   }
 
   const iconSize = Math.round(size * 0.52);
@@ -501,6 +639,208 @@ export function BrandLogoSquircle({
             {(brand || "AZ").slice(0, 2)}
           </span>
         )}
+    </div>
+  );
+}
+
+export function BrandIconPickerModal({
+  isOpen,
+  onClose,
+  currentValue,
+  onSelect,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  currentValue: string;
+  onSelect: (iconValue: string) => void;
+}) {
+  const [search, setSearch] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState("all");
+  const [customUrl, setCustomUrl] = useState(currentValue.startsWith("brand:") ? "" : currentValue);
+  const [chosenId, setChosenId] = useState(currentValue);
+
+  const categories = useMemo(() => {
+    const cats = Array.from(new Set(BRAND_ICON_PRESETS.map((p) => p.category || "Other")));
+    return ["all", ...cats];
+  }, []);
+
+  const filteredPresets = useMemo(() => {
+    return BRAND_ICON_PRESETS.filter((p) => {
+      const matchCat = selectedCategory === "all" || p.category === selectedCategory;
+      const matchSearch =
+        !search.trim() ||
+        p.label.toLowerCase().includes(search.toLowerCase()) ||
+        p.brand.toLowerCase().includes(search.toLowerCase()) ||
+        (p.category && p.category.toLowerCase().includes(search.toLowerCase()));
+      return matchCat && matchSearch;
+    });
+  }, [search, selectedCategory]);
+
+  if (!isOpen) return null;
+
+  const handleApply = () => {
+    if (customUrl.trim()) {
+      onSelect(customUrl.trim());
+    } else {
+      onSelect(chosenId || "brand:key");
+    }
+    onClose();
+  };
+
+  return (
+    <div className="product-modal-backdrop" onClick={onClose}>
+      <div
+        className="vault-modal-card"
+        style={{ maxWidth: "680px", maxHeight: "88vh" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <button type="button" className="product-modal-close" onClick={onClose}>
+          <X size={18} />
+        </button>
+
+        <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "14px" }}>
+          <div style={{ background: "#e6f4ef", color: "#0b765c", padding: "8px", borderRadius: "10px" }}>
+            <Sparkles size={20} />
+          </div>
+          <div>
+            <h2 style={{ fontSize: "18px", fontWeight: 700, margin: 0 }}>ব্র্যান্ড আইকন লাইব্রেরি</h2>
+            <p style={{ margin: "2px 0 0", fontSize: "12px", color: "#64748b" }}>
+              আপনার প্রোডাক্ট বা সার্ভিসের জন্য অফিসিয়াল ব্র্যান্ড লোগো বা কাস্টম আইকন নির্বাচন করুন
+            </p>
+          </div>
+        </div>
+
+        {/* Search & Category Filter Toolbar */}
+        <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginBottom: "14px" }}>
+          <div className="toolbar-search" style={{ width: "100%" }}>
+            <Search size={15} />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="ব্র্যান্ডের নাম খুঁজুন (যেমন: Gemini, Netflix, Canva, NordVPN...)"
+              autoFocus
+            />
+          </div>
+
+          <div className="chip-selector" style={{ overflowX: "auto", paddingBottom: "2px" }}>
+            {categories.map((cat) => (
+              <button
+                key={cat}
+                type="button"
+                className={`admin-chip ${selectedCategory === cat ? "active" : ""}`}
+                onClick={() => setSelectedCategory(cat)}
+              >
+                {cat === "all" ? "সব ক্যাটাগরি" : cat}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Brand Icons Grid */}
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))",
+            gap: "8px",
+            maxHeight: "340px",
+            overflowY: "auto",
+            padding: "4px",
+            marginBottom: "14px",
+            border: "1px solid var(--line, #e2ece6)",
+            borderRadius: "12px",
+            background: "#fbfdfc",
+          }}
+        >
+          {filteredPresets.map((preset) => {
+            const isSelected = !customUrl.trim() && chosenId === preset.id;
+            return (
+              <button
+                key={preset.id}
+                type="button"
+                onClick={() => {
+                  setChosenId(preset.id);
+                  setCustomUrl("");
+                }}
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  gap: "6px",
+                  padding: "10px 6px",
+                  borderRadius: "10px",
+                  border: isSelected ? "2px solid #0b765c" : "1px solid #e2ece6",
+                  background: isSelected ? "#e6f7ef" : "#ffffff",
+                  cursor: "pointer",
+                  transition: "all 0.15s ease",
+                  textAlign: "center",
+                }}
+              >
+                <BrandLogoSquircle brand={preset.brand} imageUrl={preset.id} size={36} />
+                <span style={{ fontSize: "11px", fontWeight: 650, color: isSelected ? "#0b765c" : "#334155", lineHeight: 1.2 }}>
+                  {preset.label}
+                </span>
+                {isSelected && (
+                  <span style={{ fontSize: "10px", color: "#0b765c", fontWeight: 700, display: "flex", alignItems: "center", gap: "2px" }}>
+                    <Check size={11} /> সিলেক্টেড
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Custom Direct URL Input */}
+        <div style={{ background: "#f8faf9", padding: "12px", borderRadius: "10px", border: "1px solid #e2ece6", marginBottom: "14px" }}>
+          <label style={{ display: "block", fontSize: "11px", fontWeight: 700, color: "#475569", marginBottom: "4px" }}>
+            অথবা কাস্টম ইমেজ / SVG URL লিংক দিন:
+          </label>
+          <div style={{ display: "flex", gap: "8px" }}>
+            <input
+              type="text"
+              className="admin-password-input"
+              style={{ fontSize: "12px", padding: "8px 12px" }}
+              value={customUrl}
+              onChange={(e) => {
+                setCustomUrl(e.target.value);
+                if (e.target.value.trim()) setChosenId(e.target.value.trim());
+              }}
+              placeholder="https://example.com/logo.png"
+            />
+            {customUrl && (
+              <button
+                type="button"
+                className="button button-sm button-light"
+                onClick={() => setCustomUrl("")}
+              >
+                রিসেট
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Footer Actions */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <span style={{ fontSize: "11px", color: "#64748b" }}>প্রিভিউ:</span>
+            <BrandLogoSquircle
+              imageUrl={customUrl.trim() || chosenId}
+              size={32}
+            />
+            <span style={{ fontSize: "11px", fontWeight: 700 }}>
+              {customUrl.trim() ? "কাস্টম ইমেজ" : BRAND_ICON_PRESETS.find((p) => p.id === chosenId)?.label || chosenId}
+            </span>
+          </div>
+
+          <div style={{ display: "flex", gap: "8px" }}>
+            <button type="button" className="button button-light" onClick={onClose}>
+              বাতিল
+            </button>
+            <button type="button" className="button button-primary" onClick={handleApply}>
+              <Check size={14} /> আইকন সিলেক্ট করুন
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

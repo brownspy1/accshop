@@ -1,12 +1,13 @@
 import { BrandMark } from "@/components/StoreHeader";
-import { BrandLogoSquircle, BRAND_ICON_PRESETS } from "@/components/BrandLogos";
+import { BrandLogoSquircle, BRAND_ICON_PRESETS, BrandIconPickerModal } from "@/components/BrandLogos";
 import { startLogin } from "@/const";
 import { trpc } from "@/lib/trpc";
 import { formatMoney, orderStatusLabels } from "@/lib/shop";
-import { Activity, AlertTriangle, ArrowDownRight, ArrowLeft, ArrowRight, BadgeCheck, Banknote, Bot, Boxes, Check, CheckCircle2, ChevronDown, ChevronRight, CircleDollarSign, ClipboardList, Clock3, Copy, CreditCard, Database, ExternalLink, Eye, EyeOff, FileText, Globe, ImagePlus, KeyRound, LayoutDashboard, LoaderCircle, LogOut, Mail, PackageCheck, Plus, RefreshCw, RotateCcw, Save, Search, Settings2, ShieldCheck, ShoppingBag, Sparkles, Store, Trash2, TrendingUp, Wallet, X, Zap } from "lucide-react";
+import { Activity, AlertTriangle, ArrowDownRight, ArrowLeft, ArrowRight, BadgeCheck, Banknote, Bot, Boxes, Check, CheckCircle2, ChevronDown, ChevronRight, CircleDollarSign, ClipboardList, Clock3, Copy, CreditCard, Database, ExternalLink, Eye, EyeOff, FileText, Fingerprint, Globe, ImagePlus, KeyRound, LayoutDashboard, Link2, LoaderCircle, LogOut, Mail, PackageCheck, Plus, RefreshCw, RotateCcw, Save, Search, Settings2, Share2, Shield, ShieldCheck, ShoppingBag, Sparkles, Store, Tag, Trash2, TrendingUp, Wallet, X, Zap } from "lucide-react";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { Link } from "wouter";
 import { toast } from "sonner";
+import { startAuthentication, startRegistration } from "@simplewebauthn/browser";
 
 type AdminTab = "overview" | "services" | "vault" | "orders" | "connection" | "history" | "settings";
 const navItems: { id: AdminTab; label: string; icon: typeof LayoutDashboard }[] = [
@@ -25,8 +26,38 @@ export default function Admin() {
   const [adminUsername, setAdminUsername] = useState("");
   const [adminPassword, setAdminPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [passkeyLoading, setPasskeyLoading] = useState(false);
   const utils = trpc.useUtils();
   const { data: user, isLoading, error } = trpc.auth.me.useQuery();
+  const hasPasskeysQuery = trpc.auth.hasPasskeys.useQuery(undefined, { retry: false });
+  const passkeyAuthOptions = trpc.auth.passkeyAuthOptions.useMutation();
+  const passkeyVerifyAuth = trpc.auth.passkeyVerifyAuth.useMutation({
+    onSuccess: () => {
+      toast.success("Passkey / বায়োমেট্রিক দিয়ে সফলভাবে Admin সাইন ইন হয়েছে!");
+      void utils.auth.me.invalidate();
+    },
+    onError: (err) => {
+      toast.error(err.message || "Passkey ভেরিফিকেশন ব্যর্থ হয়েছে");
+    },
+  });
+
+  const handlePasskeyLogin = async () => {
+    try {
+      setPasskeyLoading(true);
+      const options = await passkeyAuthOptions.mutateAsync();
+      const authResp = await startAuthentication(options as any);
+      await passkeyVerifyAuth.mutateAsync({ response: authResp });
+    } catch (err: any) {
+      if (err?.name === "NotAllowedError") {
+        toast.error("Passkey সাইন ইন বাতিল করা হয়েছে");
+      } else {
+        toast.error(err?.message || "Passkey সাইন ইন ব্যর্থ হয়েছে");
+      }
+    } finally {
+      setPasskeyLoading(false);
+    }
+  };
+
   const logout = trpc.auth.logout.useMutation({ onSuccess: () => { window.location.href = "/"; } });
   const loginWithSecret = trpc.auth.loginWithSecret.useMutation({
     onSuccess: () => {
@@ -72,6 +103,33 @@ export default function Admin() {
           {loginWithSecret.isPending ? <LoaderCircle size={15} className="spin" /> : <ShieldCheck size={15} />} Sign in <ArrowRight size={15} />
         </button>
       </form>
+
+      {/* Biometric / Passkey Login Option */}
+      <div className="login-divider"><span>অথবা বায়োমেট্রিক</span></div>
+      <button
+        type="button"
+        className="button button-secondary gate-button"
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: "8px",
+          borderColor: "#0b765c",
+          background: "#f0fdf4",
+          color: "#065f46",
+          fontWeight: 600,
+        }}
+        onClick={handlePasskeyLogin}
+        disabled={passkeyLoading || passkeyAuthOptions.isPending || passkeyVerifyAuth.isPending}
+      >
+        {passkeyLoading || passkeyAuthOptions.isPending || passkeyVerifyAuth.isPending ? (
+          <LoaderCircle size={16} className="spin" />
+        ) : (
+          <Fingerprint size={18} style={{ color: "#0b765c" }} />
+        )}
+        Passkey / Touch ID দিয়ে সাইন ইন
+      </button>
+
       {Boolean(window.__MANUS_CONFIG__?.oauthPortalUrl) && (
         <>
           <div className="login-divider"><span>অথবা</span></div>
@@ -375,7 +433,35 @@ async function compressProductImage(file: File): Promise<Blob> {
   } finally { bitmap.close(); }
 }
 
-type ServiceRowInput = { serviceKey: string; provider: string; providerServiceId: string; name: string; description: string | null; customDescription?: string | null; supplierPrice: number; supplierCurrency: string; providerRate: number; pricingTiers: string | null; stock: number; reservedStock: number; isActive: number; isListed: number; retailPrice: number; imageUrl: string | null; lastStockSyncedAt: Date | null; priceReviewRequired: number; priceMarkupRatio: number };
+type ServiceRowInput = {
+  serviceKey: string;
+  provider: string;
+  providerServiceId: string;
+  name: string;
+  description: string | null;
+  customDescription?: string | null;
+  supplierPrice: number;
+  supplierCurrency: string;
+  providerRate: number;
+  pricingTiers: string | null;
+  stock: number;
+  reservedStock: number;
+  isActive: number;
+  isListed: number;
+  retailPrice: number;
+  imageUrl: string | null;
+  lastStockSyncedAt: Date | null;
+  priceReviewRequired: number;
+  priceMarkupRatio: number;
+  warrantyText?: string | null;
+  warrantyDays?: number | null;
+  isFlashSale?: number | null;
+  flashSalePrice?: number | null;
+  flashSaleEndsAt?: Date | string | null;
+  tags?: string | null;
+  slug?: string | null;
+};
+
 function ServiceRow({ item }: { item: ServiceRowInput }) {
   const utils = trpc.useUtils();
   const [price, setPrice] = useState(String(item.retailPrice || ""));
@@ -385,9 +471,20 @@ function ServiceRow({ item }: { item: ServiceRowInput }) {
   const [editDescOpen, setEditDescOpen] = useState(false);
   const [imageUrl, setImageUrl] = useState(item.imageUrl || "");
   const [editIconOpen, setEditIconOpen] = useState(false);
+  const [pickerModalOpen, setPickerModalOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
+
+  // Warranty, Flash Sale, Tags
+  const [warrantyText, setWarrantyText] = useState(item.warrantyText || "");
+  const [warrantyDays, setWarrantyDays] = useState(item.warrantyDays != null ? String(item.warrantyDays) : "");
+  const [isFlashSale, setIsFlashSale] = useState(Boolean(item.isFlashSale));
+  const [flashSalePrice, setFlashSalePrice] = useState(item.flashSalePrice != null ? String(item.flashSalePrice) : "");
+  const [tags, setTags] = useState(item.tags || "");
+  const [optionsOpen, setOptionsOpen] = useState(false);
+
   const fileRef = useRef<HTMLInputElement>(null);
   const needsPriceReview = item.priceReviewRequired === 1 || (Number(price) > 0 && item.retailPrice <= 0 && (item.supplierPrice <= 0 || item.priceMarkupRatio === 0));
+
   const save = trpc.shop.admin.services.update.useMutation({
     onSuccess: () => {
       toast.success(reviewConfirmed ? "দাম save এবং review complete হয়েছে" : "Service update হয়েছে");
@@ -396,17 +493,25 @@ function ServiceRow({ item }: { item: ServiceRowInput }) {
     },
     onError: error => toast.error(error.message),
   });
+
   useEffect(() => {
     setPrice(String(item.retailPrice || ""));
     setListed(Boolean(item.isListed));
     setReviewConfirmed(false);
     setCustomDesc(item.customDescription || "");
     setImageUrl(item.imageUrl || "");
-  }, [item.retailPrice, item.isListed, item.priceReviewRequired, item.customDescription, item.imageUrl]);
+    setWarrantyText(item.warrantyText || "");
+    setWarrantyDays(item.warrantyDays != null ? String(item.warrantyDays) : "");
+    setIsFlashSale(Boolean(item.isFlashSale));
+    setFlashSalePrice(item.flashSalePrice != null ? String(item.flashSalePrice) : "");
+    setTags(item.tags || "");
+  }, [item.retailPrice, item.isListed, item.priceReviewRequired, item.customDescription, item.imageUrl, item.warrantyText, item.warrantyDays, item.isFlashSale, item.flashSalePrice, item.tags]);
+
   const available = Math.max(0, item.stock - item.reservedStock);
   let tiers: Array<{ minQuantity: number; maxQuantity: number; priceInr: number; priceUsdt: number }> = [];
   try { const parsed: unknown = item.pricingTiers ? JSON.parse(item.pricingTiers) : []; if (Array.isArray(parsed)) tiers = parsed as typeof tiers; } catch { tiers = []; }
   const supplierLabel = item.provider === "couponshops" ? `₹${tiers[0]?.priceInr ?? "—"} / ${tiers[0]?.priceUsdt ?? "—"} USDT` : `${item.supplierPrice} provider units`;
+
   const upload = async (file: File) => {
     try {
       setUploading(true);
@@ -421,114 +526,239 @@ function ServiceRow({ item }: { item: ServiceRowInput }) {
     } catch (error) { toast.error(error instanceof Error ? error.message : "Image upload ব্যর্থ হয়েছে"); }
     finally { setUploading(false); }
   };
+
+  const handleSaveAll = () => {
+    save.mutate({
+      serviceKey: item.serviceKey,
+      retailPrice: Number(price || 0),
+      isListed: listed,
+      confirmPriceReview: reviewConfirmed,
+      customDescription: customDesc.trim() || null,
+      imageUrl: imageUrl.trim() || null,
+      warrantyText: warrantyText.trim() || null,
+      warrantyDays: warrantyDays ? parseInt(warrantyDays, 10) : undefined,
+      isFlashSale: isFlashSale,
+      flashSalePrice: flashSalePrice ? parseFloat(flashSalePrice) : null,
+      tags: tags.trim() || null,
+    });
+  };
+
+  const productSlug = item.slug || item.serviceKey;
+  const shareUrl = typeof window !== "undefined" ? `${window.location.origin}/p/${productSlug}` : `/p/${productSlug}`;
+
+  const copyProductLink = () => {
+    if (typeof navigator !== "undefined" && navigator.clipboard) {
+      void navigator.clipboard.writeText(shareUrl);
+      toast.success(`প্রোডাক্ট লিংক কপি হয়েছে: /p/${productSlug}`);
+    }
+  };
+
   return <div className="service-row">
     <div className="service-cell">
       <BrandLogoSquircle brand={item.name} imageUrl={imageUrl} size={42} className="shrink-0" />
       <div>
-        <b>{item.name}</b>
-        <small>{item.provider} · {item.providerServiceId || item.serviceKey}</small>
-        
-        {/* Icon & Thumbnail Editor Trigger */}
-        <div className="flex items-center gap-2 mt-0.5">
-          <button type="button" className="text-link flex items-center gap-1 text-[11px]" onClick={() => setEditIconOpen(!editIconOpen)}>
-            <Sparkles size={11} />
-            {imageUrl ? "Change icon / logo" : "Set brand icon"}
-          </button>
-          {imageUrl && (
-            <span className="text-[10px] px-1.5 py-0.2 rounded bg-slate-100 text-slate-600 font-mono">
-              {imageUrl.startsWith("brand:") ? imageUrl.replace("brand:", "") : "custom"}
+        <div className="flex items-center gap-2">
+          <b>{item.name}</b>
+          {isFlashSale && (
+            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
+              <Zap size={10} className="fill-amber-500 text-amber-500" /> ফ্ল্যাশ সেল
+            </span>
+          )}
+          {warrantyText && (
+            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+              <ShieldCheck size={10} /> {warrantyText}
             </span>
           )}
         </div>
+        <small>{item.provider} · {item.providerServiceId || item.serviceKey}</small>
 
-        {/* Icon Picker & URL Editor Box */}
-        {editIconOpen && (
-          <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl my-2 flex flex-col gap-2.5 max-w-md">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-800">কার্ডের আইকন / লোগো নির্বাচন করুন:</span>
-              <button type="button" className="text-xs text-slate-500 hover:text-slate-800" onClick={() => setEditIconOpen(false)}>
+        {/* Quick action triggers */}
+        <div className="flex items-center flex-wrap gap-2.5 mt-1">
+          {/* Brand Icon Trigger */}
+          <button
+            type="button"
+            className="text-link flex items-center gap-1 text-[11px]"
+            onClick={() => setPickerModalOpen(true)}
+          >
+            <Sparkles size={11} />
+            {imageUrl ? "Change icon" : "Brand icon library"}
+          </button>
+
+          {/* Copy Shareable Product Link */}
+          <button
+            type="button"
+            className="text-link flex items-center gap-1 text-[11px] text-emerald-700 hover:text-emerald-800"
+            onClick={copyProductLink}
+            title="সরাসরি প্রোডাক্ট লিঙ্ক কপি করুন"
+          >
+            <Copy size={11} />
+            লিংক কপি (/p/{productSlug})
+          </button>
+          <a
+            href={`/p/${productSlug}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-slate-400 hover:text-slate-600 inline-flex items-center"
+            title="Storefront-এ দেখুন"
+          >
+            <ExternalLink size={11} />
+          </a>
+
+          {/* Flash Sale, Warranty & Tags Drawer Trigger */}
+          <button
+            type="button"
+            className="text-link flex items-center gap-1 text-[11px] text-indigo-700 hover:text-indigo-800"
+            onClick={() => setOptionsOpen(!optionsOpen)}
+          >
+            <Tag size={11} />
+            {optionsOpen ? "Hide extra settings" : "⚡ ফ্ল্যাশ সেল, ওয়ারেন্টি ও ট্যাগ"}
+          </button>
+        </div>
+
+        {/* Brand Icon Picker Modal */}
+        <BrandIconPickerModal
+          isOpen={pickerModalOpen}
+          onClose={() => setPickerModalOpen(false)}
+          currentValue={imageUrl}
+          onSelect={(iconId: string) => {
+            setImageUrl(iconId);
+            setPickerModalOpen(false);
+            save.mutate({
+              serviceKey: item.serviceKey,
+              retailPrice: Number(price || 0),
+              isListed: listed,
+              confirmPriceReview: reviewConfirmed,
+              customDescription: customDesc.trim() || null,
+              imageUrl: iconId,
+              warrantyText: warrantyText.trim() || null,
+              warrantyDays: warrantyDays ? parseInt(warrantyDays, 10) : undefined,
+              isFlashSale: isFlashSale,
+              flashSalePrice: flashSalePrice ? parseFloat(flashSalePrice) : null,
+              tags: tags.trim() || null,
+            });
+            toast.success("ব্র্যান্ড আইকন সংরক্ষিত হয়েছে!");
+          }}
+        />
+
+        {/* Extra Options Panel (Flash Sale, Warranty, Tags) */}
+        {optionsOpen && (
+          <div className="p-3 bg-indigo-50/70 border border-indigo-200 rounded-xl my-2 flex flex-col gap-2.5 max-w-lg">
+            <div className="flex items-center justify-between pb-1 border-b border-indigo-200">
+              <span className="text-xs font-bold text-indigo-900 flex items-center gap-1.5">
+                <Tag size={13} /> ফ্ল্যাশ সেল, প্রোডাক্ট ওয়ারেন্টি ও ট্যাগ ম্যানেজমেন্ট
+              </span>
+              <button type="button" className="text-xs text-indigo-500 hover:text-indigo-800" onClick={() => setOptionsOpen(false)}>
                 <X size={14} />
               </button>
             </div>
 
-            {/* Quick Brand Preset Pills */}
-            <div className="flex flex-wrap gap-1">
-              {BRAND_ICON_PRESETS.map((preset) => {
-                const isSelected = imageUrl === preset.id || (!imageUrl && item.name.toLowerCase().includes(preset.brand));
-                return (
-                  <button
-                    key={preset.id}
-                    type="button"
-                    onClick={() => setImageUrl(preset.id)}
-                    className={`text-[10px] font-semibold px-2 py-1 rounded-md border flex items-center gap-1 transition-all ${
-                      isSelected
-                        ? "bg-emerald-700 text-white border-emerald-800 shadow-2xs font-bold"
-                        : "bg-white text-slate-700 border-slate-200 hover:bg-slate-100"
-                    }`}
-                  >
-                    <BrandLogoSquircle imageUrl={preset.id} size={14} />
-                    <span>{preset.label}</span>
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Custom URL Input */}
-            <div className="flex flex-col gap-1 mt-0.5">
-              <span className="text-[10px] font-bold text-slate-600">বা কাস্টম ইমেজ / SVG URL লিংক:</span>
-              <div className="flex gap-1.5">
+            {/* Flash Sale Settings */}
+            <div className="bg-white p-2.5 rounded-lg border border-indigo-100 flex flex-col gap-2">
+              <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-800">
                 <input
-                  type="text"
-                  value={imageUrl}
-                  onChange={(e) => setImageUrl(e.target.value)}
-                  placeholder="https://... বা brand:spotify"
-                  className="flex-1 px-2.5 py-1 text-xs border rounded-lg bg-white outline-none focus:border-emerald-600"
+                  type="checkbox"
+                  checked={isFlashSale}
+                  onChange={(e) => setIsFlashSale(e.target.checked)}
+                  className="rounded text-amber-600 focus:ring-amber-500"
                 />
-                {imageUrl && (
-                  <button
-                    type="button"
-                    onClick={() => setImageUrl("")}
-                    className="px-2 py-1 text-[11px] font-semibold text-slate-600 bg-slate-200 hover:bg-slate-300 rounded-lg"
-                    title="Default brand icon"
-                  >
-                    Reset
-                  </button>
-                )}
+                <span className="flex items-center gap-1">
+                  <Zap size={13} className="text-amber-500 fill-amber-500" />
+                  ফ্ল্যাশ সেল (Flash Sale) সক্রিয় করুন
+                </span>
+              </label>
+
+              {isFlashSale && (
+                <div className="flex items-center gap-2 pt-1">
+                  <label className="text-[11px] font-semibold text-slate-600 shrink-0">
+                    ফ্ল্যাশ সেল ডিসকাউন্ট মূল্য (BDT):
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="1"
+                    value={flashSalePrice}
+                    onChange={(e) => setFlashSalePrice(e.target.value)}
+                    placeholder="যেমন: ৩৫০"
+                    className="flex-1 px-2.5 py-1 text-xs border rounded-lg bg-white outline-none focus:border-amber-500"
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* Warranty Settings */}
+            <div className="bg-white p-2.5 rounded-lg border border-indigo-100 flex flex-col gap-2">
+              <span className="text-xs font-bold text-slate-800 flex items-center gap-1">
+                <ShieldCheck size={13} className="text-emerald-600" />
+                ওয়ারেন্টি ও রিপ্লেসমেন্ট পলিসি
+              </span>
+              <div className="grid grid-cols-3 gap-2">
+                <div className="col-span-2">
+                  <input
+                    type="text"
+                    value={warrantyText}
+                    onChange={(e) => setWarrantyText(e.target.value)}
+                    placeholder="যেমন: ৭ দিনের রিপ্লেসমেন্ট গ্যারান্টি"
+                    className="w-full px-2.5 py-1 text-xs border rounded-lg bg-white outline-none focus:border-emerald-600"
+                  />
+                </div>
+                <div>
+                  <input
+                    type="number"
+                    min="0"
+                    value={warrantyDays}
+                    onChange={(e) => setWarrantyDays(e.target.value)}
+                    placeholder="দিন (যেমন: 7)"
+                    className="w-full px-2.5 py-1 text-xs border rounded-lg bg-white outline-none focus:border-emerald-600"
+                  />
+                </div>
               </div>
             </div>
 
-            {/* File Upload & Save Row */}
-            <div className="flex items-center justify-between pt-1 border-t border-slate-200 text-xs">
-              <div className="image-upload-control" style={{ margin: 0 }}>
-                <input ref={fileRef} hidden type="file" accept="image/jpeg,image/png,image/webp" onChange={event => { const selected = event.target.files?.[0]; if (selected) void upload(selected); event.currentTarget.value = ""; }} />
-                <button type="button" className="text-link text-[11px] flex items-center gap-1" onClick={() => fileRef.current?.click()} disabled={uploading}>
-                  {uploading ? <LoaderCircle size={11} className="spin" /> : <ImagePlus size={11} />}
-                  ফাইল আপলোড
-                </button>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <button
-                  type="button"
-                  className="button button-sm button-primary"
-                  onClick={() => {
-                    save.mutate({
-                      serviceKey: item.serviceKey,
-                      retailPrice: Number(price || 0),
-                      isListed: listed,
-                      confirmPriceReview: reviewConfirmed,
-                      customDescription: customDesc.trim() || null,
-                      imageUrl: imageUrl.trim() || null,
-                    });
-                    setEditIconOpen(false);
-                  }}
-                  disabled={save.isPending}
-                >
-                  Save icon
-                </button>
-                <button type="button" className="button button-sm button-light" onClick={() => setEditIconOpen(false)}>
-                  Close
-                </button>
-              </div>
+            {/* Product Tags */}
+            <div className="bg-white p-2.5 rounded-lg border border-indigo-100 flex flex-col gap-1.5">
+              <span className="text-xs font-bold text-slate-800 flex items-center gap-1">
+                <Tag size={13} className="text-indigo-600" />
+                প্রোডাক্ট সার্চ ট্যাগ ও ব্যাজ (কমা দিয়ে লিখুন)
+              </span>
+              <input
+                type="text"
+                value={tags}
+                onChange={(e) => setTags(e.target.value)}
+                placeholder="যেমন: হট ডিল, ইনস্ট্যান্ট, অটো ডেলিভারি, ভেরিফাইড"
+                className="w-full px-2.5 py-1 text-xs border rounded-lg bg-white outline-none focus:border-indigo-600"
+              />
+              {tags && (
+                <div className="flex flex-wrap gap-1 mt-1">
+                  {tags.split(",").map((t, idx) => t.trim() ? (
+                    <span key={idx} className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-indigo-100 text-indigo-700">
+                      #{t.trim()}
+                    </span>
+                  ) : null)}
+                </div>
+              )}
+            </div>
+
+            {/* Save Extra Options Button */}
+            <div className="flex justify-end gap-2 pt-1">
+              <button
+                type="button"
+                className="button button-sm button-light"
+                onClick={() => setOptionsOpen(false)}
+              >
+                বাতিল
+              </button>
+              <button
+                type="button"
+                className="button button-sm button-primary"
+                onClick={() => {
+                  handleSaveAll();
+                  setOptionsOpen(false);
+                }}
+                disabled={save.isPending}
+              >
+                {save.isPending ? <LoaderCircle size={12} className="spin" /> : <Save size={12} />}
+                সেটিংস সেভ করুন
+              </button>
             </div>
           </div>
         )}
@@ -547,8 +777,8 @@ function ServiceRow({ item }: { item: ServiceRowInput }) {
             <textarea rows={3} value={customDesc} onChange={e => setCustomDesc(e.target.value)} placeholder="সার্ভিসের নিজস্ব বিবরণ, সুবিধা বা শর্তাবলী লিখুন..." />
           </label>
           <div className="desc-actions">
-            <button type="button" className="button button-sm button-primary" onClick={() => { save.mutate({ serviceKey: item.serviceKey, retailPrice: Number(price || 0), isListed: listed, confirmPriceReview: reviewConfirmed, customDescription: customDesc.trim() || null, imageUrl: imageUrl.trim() || null }); setEditDescOpen(false); }} disabled={save.isPending}>Save description</button>
-            {item.customDescription && <button type="button" className="button button-sm button-light" onClick={() => { setCustomDesc(""); save.mutate({ serviceKey: item.serviceKey, retailPrice: Number(price || 0), isListed: listed, confirmPriceReview: reviewConfirmed, customDescription: null, imageUrl: imageUrl.trim() || null }); setEditDescOpen(false); }} disabled={save.isPending}>Reset to supplier</button>}
+            <button type="button" className="button button-sm button-primary" onClick={() => { handleSaveAll(); setEditDescOpen(false); }} disabled={save.isPending}>Save description</button>
+            {item.customDescription && <button type="button" className="button button-sm button-light" onClick={() => { setCustomDesc(""); save.mutate({ serviceKey: item.serviceKey, retailPrice: Number(price || 0), isListed: listed, confirmPriceReview: reviewConfirmed, customDescription: null, imageUrl: imageUrl.trim() || null, warrantyText: warrantyText.trim() || null, isFlashSale, flashSalePrice: flashSalePrice ? parseFloat(flashSalePrice) : null, tags: tags.trim() || null }); setEditDescOpen(false); }} disabled={save.isPending}>Reset to supplier</button>}
             <button type="button" className="button button-sm button-light" onClick={() => setEditDescOpen(false)}>Close</button>
           </div>
           {item.description && <details className="supplier-desc-reference"><summary>Original Supplier Description (Reference)</summary><p>{item.description}</p></details>}
@@ -563,7 +793,7 @@ function ServiceRow({ item }: { item: ServiceRowInput }) {
     <label className="retail-input"><input type="number" min="0" max="10000000" step="0.01" value={price} onChange={event => setPrice(event.target.value)} aria-label={`${item.name} retail price`} placeholder="0.00" /><small>{item.priceMarkupRatio > 0 ? `Retail · ×${item.priceMarkupRatio.toFixed(2)} markup` : "Retail price"}</small></label>
     <button type="button" className={`toggle-switch ${listed ? "on" : ""}`} onClick={() => setListed(!listed)} aria-pressed={listed} disabled={!item.isActive || available < 1 || Number(price) <= 0} aria-label="Storefront visibility"><i /></button>
     {needsPriceReview && <label className="price-review-confirm"><input type="checkbox" checked={reviewConfirmed} onChange={event => setReviewConfirmed(event.target.checked)} /><span>Supplier cost, currency ও retail price যাচাই করেছি</span></label>}
-    <button className="icon-save" title={needsPriceReview ? "Save price and mark reviewed" : "Save service"} onClick={() => save.mutate({ serviceKey: item.serviceKey, retailPrice: Number(price || 0), isListed: listed, confirmPriceReview: reviewConfirmed, customDescription: customDesc.trim() || null, imageUrl: imageUrl.trim() || null })} disabled={save.isPending || (needsPriceReview && listed && !reviewConfirmed)}><Save size={15} /></button>
+    <button className="icon-save" title={needsPriceReview ? "Save price and mark reviewed" : "Save service"} onClick={handleSaveAll} disabled={save.isPending || (needsPriceReview && listed && !reviewConfirmed)}><Save size={15} /></button>
   </div>;
 }
 
@@ -796,6 +1026,19 @@ function VaultSection() {
                     </span>
                   </div>
                   <div style={{ display: "flex", gap: "6px" }}>
+                    <button
+                      type="button"
+                      className="button button-sm button-light"
+                      style={{ fontSize: "11px", padding: "4px 8px" }}
+                      onClick={() => {
+                        const url = `${window.location.origin}/p/${prod.slug || prod.serviceKey}`;
+                        void navigator.clipboard.writeText(url);
+                        toast.success(`প্রোডাক্ট লিংক কপি হয়েছে: /p/${prod.slug || prod.serviceKey}`);
+                      }}
+                      title="সরাসরি প্রোডাক্ট লিঙ্ক কপি করুন"
+                    >
+                      <Copy size={12} /> লিংক কপি
+                    </button>
                     <button
                       type="button"
                       className="button button-sm button-light"
@@ -1117,6 +1360,11 @@ function CreateCustomProductModal({ onClose, onSuccess }: { onClose: () => void;
   const [description, setDescription] = useState("");
   const [selectedBrand, setSelectedBrand] = useState("brand:key");
   const [credentials, setCredentials] = useState("");
+  const [warrantyText, setWarrantyText] = useState("৭ দিনের রিপ্লেসমেন্ট ওয়ারেন্টি");
+  const [isFlashSale, setIsFlashSale] = useState(false);
+  const [flashSalePrice, setFlashSalePrice] = useState("");
+  const [tags, setTags] = useState("");
+  const [pickerModalOpen, setPickerModalOpen] = useState(false);
 
   const create = trpc.shop.admin.customInventory.createProduct.useMutation({
     onSuccess: (res) => {
@@ -1143,6 +1391,10 @@ function CreateCustomProductModal({ onClose, onSuccess }: { onClose: () => void;
       customDescription: description.trim() || undefined,
       imageUrl: selectedBrand.startsWith("brand:") ? selectedBrand : undefined,
       bulkCredentials: credentials.trim() || undefined,
+      warrantyText: warrantyText.trim() || undefined,
+      isFlashSale: isFlashSale ? 1 : 0,
+      flashSalePrice: flashSalePrice ? parseFloat(flashSalePrice) : undefined,
+      tags: tags.trim() || undefined,
     });
   };
 
@@ -1200,17 +1452,105 @@ function CreateCustomProductModal({ onClose, onSuccess }: { onClose: () => void;
               <label style={{ display: "block", fontSize: "12px", fontWeight: 700, marginBottom: "4px" }}>
                 ব্র্যান্ড লোগো / আইকন
               </label>
-              <select
-                className="admin-password-input"
-                value={selectedBrand}
-                onChange={(e) => setSelectedBrand(e.target.value)}
-              >
-                {BRAND_ICON_PRESETS.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.label} ({p.category})
-                  </option>
-                ))}
-              </select>
+              <div style={{ display: "flex", gap: "6px" }}>
+                <select
+                  className="admin-password-input"
+                  style={{ flex: 1 }}
+                  value={selectedBrand}
+                  onChange={(e) => setSelectedBrand(e.target.value)}
+                >
+                  {BRAND_ICON_PRESETS.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.label} ({p.category})
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  className="button button-sm button-light"
+                  style={{ padding: "0 10px", fontSize: "11px", display: "inline-flex", alignItems: "center", gap: "4px" }}
+                  onClick={() => setPickerModalOpen(true)}
+                  title="ব্র্যান্ড আইকন লাইব্রেরি"
+                >
+                  <Sparkles size={12} />
+                  ব্রাউজ
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <BrandIconPickerModal
+            isOpen={pickerModalOpen}
+            onClose={() => setPickerModalOpen(false)}
+            currentValue={selectedBrand}
+            onSelect={(iconId: string) => {
+              setSelectedBrand(iconId);
+              setPickerModalOpen(false);
+              toast.success("ব্র্যান্ড আইকন নির্বাচিত হয়েছে!");
+            }}
+          />
+
+          {/* Flash Sale, Warranty & Tags Fields */}
+          <div style={{ background: "#f8fafd", border: "1px solid #e0e7ff", borderRadius: "10px", padding: "12px", display: "grid", gap: "10px" }}>
+            <span style={{ fontSize: "12px", fontWeight: 700, color: "#3730a3", display: "flex", alignItems: "center", gap: "6px" }}>
+              <Zap size={14} className="text-amber-500 fill-amber-500" />
+              ফ্ল্যাশ সেল, ওয়ারেন্টি ও প্রোডাক্ট ট্যাগ
+            </span>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+              <div>
+                <label style={{ display: "block", fontSize: "11px", fontWeight: 600, color: "#475569", marginBottom: "3px" }}>
+                  ওয়ারেন্টি পলিসি টেক্সট
+                </label>
+                <input
+                  type="text"
+                  className="admin-password-input"
+                  value={warrantyText}
+                  onChange={(e) => setWarrantyText(e.target.value)}
+                  placeholder="যেমন: ৭ দিনের রিপ্লেসমেন্ট ওয়ারেন্টি"
+                  style={{ fontSize: "12px" }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: "block", fontSize: "11px", fontWeight: 600, color: "#475569", marginBottom: "3px" }}>
+                  সার্চ ও ফিল্টার ট্যাগ (কমা দিয়ে লিখুন)
+                </label>
+                <input
+                  type="text"
+                  className="admin-password-input"
+                  value={tags}
+                  onChange={(e) => setTags(e.target.value)}
+                  placeholder="যেমন: হট ডিল, বেস্ট সেলার, ইনস্ট্যান্ট"
+                  style={{ fontSize: "12px" }}
+                />
+              </div>
+            </div>
+
+            <div style={{ display: "flex", alignItems: "center", gap: "12px", paddingTop: "4px" }}>
+              <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12px", fontWeight: 600, cursor: "pointer" }}>
+                <input
+                  type="checkbox"
+                  checked={isFlashSale}
+                  onChange={(e) => setIsFlashSale(e.target.checked)}
+                />
+                ⚡ ফ্ল্যাশ সেলে রাখুন
+              </label>
+              {isFlashSale && (
+                <div style={{ display: "flex", alignItems: "center", gap: "6px", flex: 1 }}>
+                  <span style={{ fontSize: "11px", color: "#64748b" }}>ফ্ল্যাশ সেল মূল্য (BDT):</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="1"
+                    className="admin-password-input"
+                    value={flashSalePrice}
+                    onChange={(e) => setFlashSalePrice(e.target.value)}
+                    placeholder="যেমন: ৩৫০"
+                    style={{ maxWidth: "120px", fontSize: "12px", padding: "4px 8px" }}
+                  />
+                </div>
+              )}
             </div>
           </div>
 
@@ -2334,6 +2674,52 @@ function AdminSecuritySection() {
   const [showCurrentPw, setShowCurrentPw] = useState(false);
   const [showNewPw, setShowNewPw] = useState(false);
 
+  // Passkey hooks & state
+  const passkeysQuery = trpc.auth.passkeyList.useQuery();
+  const passkeyRegOptions = trpc.auth.passkeyRegisterOptions.useMutation();
+  const passkeyVerifyReg = trpc.auth.passkeyVerifyRegister.useMutation({
+    onSuccess: () => {
+      toast.success("নতুন Passkey সফলভাবে সংরক্ষিত হয়েছে!");
+      void passkeysQuery.refetch();
+      void utils.auth.hasPasskeys.invalidate();
+    },
+    onError: (err) => {
+      toast.error(err.message || "Passkey রেজিস্ট্রেশন ব্যর্থ হয়েছে");
+    },
+  });
+  const passkeyDelete = trpc.auth.passkeyDelete.useMutation({
+    onSuccess: () => {
+      toast.success("Passkey মুছে ফেলা হয়েছে");
+      void passkeysQuery.refetch();
+      void utils.auth.hasPasskeys.invalidate();
+    },
+    onError: (err) => {
+      toast.error(err.message || "Passkey ডিলিট ব্যর্থ হয়েছে");
+    },
+  });
+  const [registeringPasskey, setRegisteringPasskey] = useState(false);
+
+  const handleRegisterPasskey = async () => {
+    try {
+      setRegisteringPasskey(true);
+      const defaultName = typeof navigator !== "undefined"
+        ? (navigator.userAgent.includes("Mac") ? "MacBook Touch ID" : navigator.userAgent.includes("iPhone") ? "iPhone Face ID" : navigator.userAgent.includes("Windows") ? "Windows Hello" : "Admin Security Key")
+        : "Admin Security Key";
+      const keyName = window.prompt("নতুন Passkey / ডিভাইসের একটি নাম দিন (যেমন: MacBook Touch ID, YubiKey):", defaultName) || defaultName;
+      const options = await passkeyRegOptions.mutateAsync();
+      const regResp = await startRegistration(options as any);
+      await passkeyVerifyReg.mutateAsync({ response: regResp, name: keyName });
+    } catch (err: any) {
+      if (err?.name === "NotAllowedError") {
+        toast.error("Passkey রেজিস্ট্রেশন বাতিল করা হয়েছে।");
+      } else {
+        toast.error(err?.message || "Passkey রেজিস্ট্রেশন ব্যর্থ হয়েছে।");
+      }
+    } finally {
+      setRegisteringPasskey(false);
+    }
+  };
+
   useEffect(() => {
     if (sec) {
       setNewUsername(sec.username || "admin");
@@ -2379,108 +2765,201 @@ function AdminSecuritySection() {
   };
 
   return (
-    <section className="admin-panel settings-panel" style={{ marginTop: "24px" }}>
-      <div className="panel-top">
-        <div>
-          <h2>Admin Account & Security (অ্যাডমিন নিরাপত্তা ও ক্রেডেনশিয়ালস)</h2>
-          <p>আপনার অ্যাডমিন Username, Email এবং Password পরিবর্তন করুন। সকল ডেটা Scrypt ক্রিপ্টোগ্রাফিক সল্ট সহ এনক্রিপ্ট হয়ে ডাটাবেজে সংরক্ষিত থাকে।</p>
+    <>
+      {/* Account Credentials */}
+      <section className="admin-panel settings-panel" style={{ marginTop: "24px" }}>
+        <div className="panel-top">
+          <div>
+            <h2>Admin Account & Security (অ্যাডমিন নিরাপত্তা ও ক্রেডেনশিয়ালস)</h2>
+            <p>আপনার অ্যাডমিন Username, Email এবং Password পরিবর্তন করুন। সকল ডেটা Scrypt ক্রিপ্টোগ্রাফিক সল্ট সহ এনক্রিপ্ট হয়ে ডাটাবেজে সংরক্ষিত থাকে।</p>
+          </div>
+          <ShieldCheck size={20} />
         </div>
-        <ShieldCheck size={20} />
-      </div>
 
-      <div className="security-status-bar" style={{ display: "flex", gap: "1rem", flexWrap: "wrap", padding: "0.75rem 1rem", background: "var(--surface, #f8fbf9)", borderRadius: "8px", border: "1px solid var(--line, #e2eae5)", marginBottom: "1rem" }}>
-        <div><small style={{ color: "#6b7c75" }}>বর্তমান ইউজারনেম:</small> <b>{sec?.username || "admin"}</b></div>
-        <div><small style={{ color: "#6b7c75" }}>অ্যাডমিন ইমেইল:</small> <b>{sec?.email || "admin@acczone.shop"}</b></div>
-        <div><small style={{ color: "#6b7c75" }}>পাসওয়ার্ড সিকিউরিটি:</small> <span style={{ color: sec?.hasCustomPassword ? "#10b981" : "#f59e0b", fontWeight: 700 }}>{sec?.hasCustomPassword ? "✓ Scrypt Encrypted (Custom)" : "Default / Env Secret"}</span></div>
-      </div>
+        <div className="security-status-bar" style={{ display: "flex", gap: "1rem", flexWrap: "wrap", padding: "0.75rem 1rem", background: "var(--surface, #f8fbf9)", borderRadius: "8px", border: "1px solid var(--line, #e2eae5)", marginBottom: "1rem" }}>
+          <div><small style={{ color: "#6b7c75" }}>বর্তমান ইউজারনেম:</small> <b>{sec?.username || "admin"}</b></div>
+          <div><small style={{ color: "#6b7c75" }}>অ্যাডমিন ইমেইল:</small> <b>{sec?.email || "admin@acczone.shop"}</b></div>
+          <div><small style={{ color: "#6b7c75" }}>পাসওয়ার্ড সিকিউরিটি:</small> <span style={{ color: sec?.hasCustomPassword ? "#10b981" : "#f59e0b", fontWeight: 700 }}>{sec?.hasCustomPassword ? "✓ Scrypt Encrypted (Custom)" : "Default / Env Secret"}</span></div>
+        </div>
 
-      <form onSubmit={handleSubmit}>
-        <div className="settings-grid">
-          <label className="field">
-            Admin Username
-            <input
-              type="text"
-              required
-              minLength={2}
-              maxLength={128}
-              value={newUsername}
-              onChange={e => setNewUsername(e.target.value)}
-              placeholder="admin"
-            />
-          </label>
+        <form onSubmit={handleSubmit}>
+          <div className="settings-grid">
+            <label className="field">
+              Admin Username
+              <input
+                type="text"
+                required
+                minLength={2}
+                maxLength={128}
+                value={newUsername}
+                onChange={e => setNewUsername(e.target.value)}
+                placeholder="admin"
+              />
+            </label>
 
-          <label className="field">
-            Admin Email
-            <input
-              type="email"
-              required
-              maxLength={320}
-              value={newEmail}
-              onChange={e => setNewEmail(e.target.value)}
-              placeholder="admin@yourdomain.com"
-            />
-          </label>
+            <label className="field">
+              Admin Email
+              <input
+                type="email"
+                required
+                maxLength={320}
+                value={newEmail}
+                onChange={e => setNewEmail(e.target.value)}
+                placeholder="admin@yourdomain.com"
+              />
+            </label>
 
-          <label className="field">
-            নতুন Password <span className="optional">(পরিবর্তন না করতে চাইলে ফাঁকা রাখুন)</span>
-            <span className="secret-input-wrap">
+            <label className="field">
+              নতুন Password <span className="optional">(পরিবর্তন না করতে চাইলে ফাঁকা রাখুন)</span>
+              <span className="secret-input-wrap">
+                <input
+                  type={showNewPw ? "text" : "password"}
+                  minLength={6}
+                  maxLength={128}
+                  value={newPassword}
+                  onChange={e => setNewPassword(e.target.value)}
+                  placeholder="কমপক্ষে ৬ অক্ষরের নতুন পাসওয়ার্ড"
+                />
+                <button type="button" className="reveal-key" onClick={() => setShowNewPw(!showNewPw)}>
+                  {showNewPw ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </span>
+            </label>
+
+            <label className="field">
+              Confirm নতুন Password
               <input
                 type={showNewPw ? "text" : "password"}
-                minLength={6}
                 maxLength={128}
-                value={newPassword}
-                onChange={e => setNewPassword(e.target.value)}
-                placeholder="কমপক্ষে ৬ অক্ষরের নতুন পাসওয়ার্ড"
+                value={confirmPassword}
+                onChange={e => setConfirmPassword(e.target.value)}
+                placeholder="নতুন পাসওয়ার্ড পুনরায় লিখুন"
               />
-              <button type="button" className="reveal-key" onClick={() => setShowNewPw(!showNewPw)}>
-                {showNewPw ? <EyeOff size={16} /> : <Eye size={16} />}
-              </button>
-            </span>
-          </label>
+            </label>
 
-          <label className="field">
-            Confirm নতুন Password
-            <input
-              type={showNewPw ? "text" : "password"}
-              maxLength={128}
-              value={confirmPassword}
-              onChange={e => setConfirmPassword(e.target.value)}
-              placeholder="নতুন পাসওয়ার্ড পুনরায় লিখুন"
-            />
-          </label>
+            <label className="field full-field" style={{ borderTop: "1px solid var(--line, #e2eae5)", paddingTop: "1rem", marginTop: "0.5rem" }}>
+              <b>বর্তমান Password (নিশ্চিতকরণের জন্য আবশ্যক)</b>
+              <span className="secret-input-wrap">
+                <input
+                  type={showCurrentPw ? "text" : "password"}
+                  required
+                  value={currentPassword}
+                  onChange={e => setCurrentPassword(e.target.value)}
+                  placeholder="পরিবর্তন সেভ করতে বর্তমান অ্যাডমিন পাসওয়ার্ড দিন"
+                />
+                <button type="button" className="reveal-key" onClick={() => setShowCurrentPw(!showCurrentPw)}>
+                  {showCurrentPw ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </span>
+            </label>
+          </div>
 
-          <label className="field full-field" style={{ borderTop: "1px solid var(--line, #e2eae5)", paddingTop: "1rem", marginTop: "0.5rem" }}>
-            <b>বর্তমান Password (নিশ্চিতকরণের জন্য আবশ্যক)</b>
-            <span className="secret-input-wrap">
-              <input
-                type={showCurrentPw ? "text" : "password"}
-                required
-                value={currentPassword}
-                onChange={e => setCurrentPassword(e.target.value)}
-                placeholder="পরিবর্তন সেভ করতে বর্তমান অ্যাডমিন পাসওয়ার্ড দিন"
-              />
-              <button type="button" className="reveal-key" onClick={() => setShowCurrentPw(!showCurrentPw)}>
-                {showCurrentPw ? <EyeOff size={16} /> : <Eye size={16} />}
-              </button>
-            </span>
-          </label>
+          <div className="notice" style={{ marginTop: "1rem" }}>
+            <ShieldCheck size={16} />
+            <span>পাসওয়ার্ড পরিবর্তনের সাথে সাথে নতুন পাসওয়ার্ড দিয়ে লগইন ভ্যালিডেট হবে। নতুন ইমেইল স্বয়ংক্রিয়ভাবে অ্যাডমিন অ্যাক্সেস প্রিভিলেজ পাবে।</span>
+          </div>
+
+          <button
+            className="button button-primary"
+            type="submit"
+            disabled={updateSecurity.isPending || !currentPassword.trim()}
+            style={{ marginTop: "1rem" }}
+          >
+            {updateSecurity.isPending ? <LoaderCircle className="spin" size={15} /> : <Save size={15} />}
+            {updateSecurity.isPending ? "সেভ হচ্ছে…" : "Update Admin Credentials"}
+          </button>
+        </form>
+      </section>
+
+      {/* Passkey / WebAuthn Biometric Security Section */}
+      <section className="admin-panel settings-panel" style={{ marginTop: "20px" }}>
+        <div className="panel-top">
+          <div>
+            <h2 className="flex items-center gap-2">
+              <Fingerprint size={20} className="text-emerald-700" />
+              Passkey & বায়োমেট্রিক সিকিউরিটি (WebAuthn / FIDO2)
+            </h2>
+            <p>
+              পাসওয়ার্ড ছাড়াই আপনার ডিভাইসের টাচ আইডি (Touch ID), ফেস আইডি (Face ID), উইন্ডোজ হ্যালো অথবা ফিজিক্যাল সিকিউরিটি কি (YubiKey) দিয়ে দ্রুত এবং সর্বোচ্চ নিরাপত্তায় ১-ক্লিকে অ্যাডমিনে লগইন করুন।
+            </p>
+          </div>
+          <button
+            type="button"
+            className="button button-primary"
+            onClick={handleRegisterPasskey}
+            disabled={registeringPasskey || passkeyRegOptions.isPending || passkeyVerifyReg.isPending}
+            style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}
+          >
+            {registeringPasskey ? <LoaderCircle size={15} className="spin" /> : <Plus size={15} />}
+            নতুন Passkey যুক্ত করুন
+          </button>
         </div>
 
-        <div className="notice" style={{ marginTop: "1rem" }}>
-          <ShieldCheck size={16} />
-          <span>পাসওয়ার্ড পরিবর্তনের সাথে সাথে নতুন পাসওয়ার্ড দিয়ে লগইন ভ্যালিডেট হবে। নতুন ইমেইল স্বয়ংক্রিয়ভাবে অ্যাডমিন অ্যাক্সেস প্রিভিলেজ পাবে।</span>
-        </div>
+        {passkeysQuery.isLoading ? (
+          <PanelLoading />
+        ) : !passkeysQuery.data || passkeysQuery.data.length === 0 ? (
+          <div className="empty-admin" style={{ padding: "24px 16px", background: "#f8fbf9", borderRadius: "10px", border: "1px dashed #cde2d7" }}>
+            <Fingerprint size={32} style={{ color: "#0b765c", opacity: 0.8 }} />
+            <b style={{ marginTop: "8px" }}>কোনো Passkey যুক্ত করা নেই</b>
+            <span style={{ fontSize: "12px", color: "#64748b", maxWidth: "420px", textAlign: "center" }}>
+              আপনার ফিঙ্গারপ্রিন্ট বা ফেস দিয়ে সুপার-ফাস্ট পাসওয়ার্ডহীন সাইন ইন সক্রিয় করতে উপরের "নতুন Passkey যুক্ত করুন" বাটনে ক্লিক করুন।
+            </span>
+          </div>
+        ) : (
+          <div style={{ display: "grid", gap: "10px", marginTop: "12px" }}>
+            <div style={{ fontSize: "12px", fontWeight: 700, color: "#475569" }}>
+              নিবন্ধিত Passkey ডিভাইস তালিকা ({passkeysQuery.data.length}টি সক্রিয়):
+            </div>
+            {passkeysQuery.data.map((key) => (
+              <div
+                key={key.id}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  padding: "12px 16px",
+                  background: "#ffffff",
+                  border: "1px solid #e2ece6",
+                  borderRadius: "10px",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                  <div style={{ width: "36px", height: "36px", borderRadius: "8px", background: "#e8f6f0", color: "#0b765c", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    <Fingerprint size={20} />
+                  </div>
+                  <div>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                      <b style={{ fontSize: "13px", color: "#1e293b" }}>{key.name || "Admin Passkey"}</b>
+                      <span className="status-chip status-fulfilled" style={{ fontSize: "10px", padding: "1px 6px" }}>
+                        Active FIDO2
+                      </span>
+                    </div>
+                    <div style={{ display: "flex", gap: "12px", fontSize: "11px", color: "#64748b", marginTop: "2px" }}>
+                      <span>যুক্ত হয়েছে: {dateText(key.createdAt)}</span>
+                      {key.lastUsedAt && <span>সর্বশেষ ব্যবহার: {dateText(key.lastUsedAt)}</span>}
+                    </div>
+                  </div>
+                </div>
 
-        <button
-          className="button button-primary"
-          type="submit"
-          disabled={updateSecurity.isPending || !currentPassword.trim()}
-          style={{ marginTop: "1rem" }}
-        >
-          {updateSecurity.isPending ? <LoaderCircle className="spin" size={15} /> : <Save size={15} />}
-          {updateSecurity.isPending ? "সেভ হচ্ছে…" : "Update Admin Credentials"}
-        </button>
-      </form>
-    </section>
+                <button
+                  type="button"
+                  className="button button-sm button-light"
+                  style={{ color: "#dc2626", borderColor: "#fecaca" }}
+                  onClick={() => {
+                    if (window.confirm(`আপনি কি "${key.name || "এই Passkey"}" মুছে ফেলতে চান?`)) {
+                      passkeyDelete.mutate({ id: key.id });
+                    }
+                  }}
+                  disabled={passkeyDelete.isPending}
+                  title="এই Passkey মুছে ফেলুন"
+                >
+                  <Trash2 size={13} /> ডিলিট
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+    </>
   );
 }

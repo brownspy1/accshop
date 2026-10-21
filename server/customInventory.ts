@@ -2,6 +2,7 @@ import { and, desc, eq, inArray, like, or, sql } from "drizzle-orm";
 import { customAlphabet } from "nanoid";
 import { activationServices, customProductInventory, orderItems, orders } from "../drizzle/schema";
 import { getDb } from "./db";
+import { ensureSchemaMigrations } from "./schemaMigrations";
 
 const newCustomKey = customAlphabet("abcdefghijklmnopqrstuvwxyz0123456789", 12);
 
@@ -47,10 +48,17 @@ export async function createCustomProduct(input: {
   retailPrice: number;
   imageUrl?: string;
   bulkCredentials?: string;
+  warrantyText?: string;
+  warrantyDays?: number;
+  isFlashSale?: number;
+  flashSalePrice?: number;
+  tags?: string;
+  slug?: string;
 }) {
   const db = await getDb();
   if (!db) throw new Error("Database is not available");
   await ensureCustomInventoryTable(db);
+  await ensureSchemaMigrations(db);
 
   const cleanName = input.name.trim();
   if (!cleanName) throw new Error("প্রোডাক্টের নাম প্রদান করুন");
@@ -81,6 +89,12 @@ export async function createCustomProduct(input: {
       retailPrice: Number(input.retailPrice.toFixed(2)),
       priceMarkupRatio: 0,
       priceReviewRequired: 0,
+      warrantyText: input.warrantyText?.trim() || "ওয়ারেন্টি নেই",
+      warrantyDays: input.warrantyDays || 0,
+      isFlashSale: input.isFlashSale ? 1 : 0,
+      flashSalePrice: input.flashSalePrice || null,
+      tags: input.tags?.trim() || "",
+      slug: input.slug?.trim() || null,
     });
 
     // 2. Insert initial credentials if provided
@@ -200,9 +214,50 @@ export async function listCustomProductsWithStats() {
       availableCount: stats?.availableCount ?? 0,
       soldCount: stats?.soldCount ?? 0,
       totalUploaded: stats?.totalCount ?? 0,
+      warrantyText: product.warrantyText || "ওয়ারেন্টি নেই",
+      warrantyDays: product.warrantyDays || 0,
+      isFlashSale: product.isFlashSale || 0,
+      flashSalePrice: product.flashSalePrice,
+      tags: product.tags || "",
+      slug: product.slug || product.serviceKey,
       createdAt: product.createdAt,
     };
   });
+}
+
+export async function updateCustomProduct(input: {
+  serviceKey: string;
+  name?: string;
+  retailPrice?: number;
+  customDescription?: string | null;
+  imageUrl?: string | null;
+  warrantyText?: string | null;
+  warrantyDays?: number;
+  isFlashSale?: number;
+  flashSalePrice?: number | null;
+  tags?: string | null;
+  slug?: string | null;
+  isListed?: number;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is not available");
+  await ensureSchemaMigrations(db);
+
+  const updates: Record<string, any> = { updatedAt: new Date() };
+  if (input.name !== undefined) updates.name = input.name.trim();
+  if (input.retailPrice !== undefined) updates.retailPrice = Number(input.retailPrice.toFixed(2));
+  if (input.customDescription !== undefined) updates.customDescription = input.customDescription?.trim() || null;
+  if (input.imageUrl !== undefined) updates.imageUrl = input.imageUrl?.trim() || "";
+  if (input.warrantyText !== undefined) updates.warrantyText = input.warrantyText?.trim() || "ওয়ারেন্টি নেই";
+  if (input.warrantyDays !== undefined) updates.warrantyDays = input.warrantyDays;
+  if (input.isFlashSale !== undefined) updates.isFlashSale = input.isFlashSale ? 1 : 0;
+  if (input.flashSalePrice !== undefined) updates.flashSalePrice = input.flashSalePrice;
+  if (input.tags !== undefined) updates.tags = input.tags?.trim() || "";
+  if (input.slug !== undefined) updates.slug = input.slug?.trim() || null;
+  if (input.isListed !== undefined) updates.isListed = input.isListed;
+
+  await db.update(activationServices).set(updates).where(eq(activationServices.serviceKey, input.serviceKey));
+  return { success: true };
 }
 
 export async function listVaultItems(params: {

@@ -28,6 +28,7 @@ import { toast } from "sonner";
 
 const categories = [
   "সব",
+  "⚡ ফ্ল্যাশ সেল",
   "AI ও প্রোডাক্টিভিটি",
   "বিনোদন",
   "শেখা",
@@ -110,6 +111,22 @@ export default function Home() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
+  // Support ?p=serviceKey parameter to auto-open product drawer
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const targetKey = params.get("p");
+    if (targetKey && rawProducts.length > 0) {
+      const match = rawProducts.find(
+        (p) => p.serviceKey === targetKey || (p as any).slug === targetKey
+      );
+      if (match) {
+        setDrawerVariant(match);
+        setDrawerVariantsList([match]);
+        setIsDrawerOpen(true);
+      }
+    }
+  }, [rawProducts]);
+
   // Calculate dynamic minimum price
   const minPrice = useMemo(() => {
     if (!rawProducts.length) return "৳৪০";
@@ -126,8 +143,11 @@ export default function Home() {
   const filteredProducts = useMemo(() => {
     let list = mergedProducts.filter((product) => {
       const matchCategory =
-        activeCategory === "সব" ||
-        product.variants.some((v) => getCategoryFor(v.serviceKey, v.name) === activeCategory);
+        activeCategory === "সব"
+          ? true
+          : activeCategory === "⚡ ফ্ল্যাশ সেল"
+          ? product.variants.some((v) => Boolean((v as any).isFlashSale && Number((v as any).flashSalePrice || 0) > 0))
+          : product.variants.some((v) => getCategoryFor(v.serviceKey, v.name) === activeCategory);
 
       const matchSearch =
         search.trim() === "" ||

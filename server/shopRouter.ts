@@ -20,7 +20,8 @@ import { setDynamicAdminEmail } from "./_core/adminAllowlist";
 import { hashAdminPassword, verifyAdminPassword, verifyFallbackAdminSecret } from "./adminAuth";
 import { adminProcedure, publicProcedure, router } from "./_core/trpc";
 import { ensureProductThumbnailsInDb, getProductThumbnail } from "./productThumbnails";
-import { createCustomProduct, addBulkCredentialsToVault, listCustomProductsWithStats, listVaultItems, deleteVaultItem, returnVaultItemToStock, updateVaultItem } from "./customInventory";
+import { createCustomProduct, updateCustomProduct, addBulkCredentialsToVault, listCustomProductsWithStats, listVaultItems, deleteVaultItem, returnVaultItemToStock, updateVaultItem } from "./customInventory";
+import { ensureSchemaMigrations } from "./schemaMigrations";
 
 const newOrderNo = customAlphabet("23456789ABCDEFGHJKLMNPQRSTUVWXYZ", 13);
 const defaultSettings = {
@@ -299,6 +300,7 @@ export const shopRouter = router({
       await refreshCatalogIfNeeded();
       const db = await getDb();
       if (!db) return FALLBACK_STORE_CATALOG;
+      await ensureSchemaMigrations(db);
       void ensureProductThumbnailsInDb(db);
       const rows = await db.select().from(activationServices).where(and(
         eq(activationServices.isListed, 1), eq(activationServices.isActive, 1),
@@ -329,8 +331,62 @@ export const shopRouter = router({
           stockFresh: row.provider === "custom" ? true : (stockAge >= 0 && stockAge <= SUPPLIER_STOCK_MAX_AGE_MS),
           quantityTiers: tiers,
           maxAllowedQuantity,
+          warrantyText: row.warrantyText || "ওয়ারেন্টি নেই",
+          warrantyDays: row.warrantyDays || 0,
+          isFlashSale: row.isFlashSale || 0,
+          flashSalePrice: row.flashSalePrice || null,
+          flashSaleEndsAt: row.flashSaleEndsAt || null,
+          tags: row.tags || "",
+          slug: row.slug || row.serviceKey,
         }];
       });
+    }),
+    getBySlug: publicProcedure.input(z.object({
+      key: z.string().min(1),
+    })).query(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "NOT_FOUND", message: "প্রোডাক্ট পাওয়া যায়নি" });
+      await ensureSchemaMigrations(db);
+      const [row] = await db.select().from(activationServices).where(
+        and(
+          or(
+            eq(activationServices.serviceKey, input.key),
+            eq(activationServices.slug, input.key)
+          ),
+          eq(activationServices.isListed, 1),
+          eq(activationServices.isActive, 1)
+        )
+      ).limit(1);
+
+      if (!row) throw new TRPCError({ code: "NOT_FOUND", message: "নির্দিষ্ট প্রোডাক্টটি পাওয়া যায়নি বা বর্তমানে আনলিস্টেড রয়েছে" });
+      const available = Math.max(0, row.stock - row.reservedStock);
+      const allTiers = pricingTiers(row.pricingTiers);
+      const purchasableTiers = row.provider === "couponshops" ? allTiers.filter(tier => tier.minQuantity <= Math.min(tier.maxQuantity, available)) : [];
+      const tiers = purchasableTiers.map(({ minQuantity, maxQuantity }) => ({ minQuantity, maxQuantity: Math.min(maxQuantity, available) }));
+      const maxAllowedQuantity = row.provider === "couponshops"
+        ? Math.min(100, available, Math.max(...purchasableTiers.map(tier => tier.maxQuantity)))
+        : row.provider === "custom" ? Math.min(50, available) : Math.min(10, available);
+      const { supplierPrice: _cost, supplierCurrency: _currency, providerRate: _rate, providerServiceId: _providerId,
+        provider: _provider, pricingTiers: _tiers, priceMarkupRatio: _markupRatio, reservedStock, stock, lastStockSyncedAt, ...item } = row;
+
+      return {
+        ...item,
+        imageUrl: row.imageUrl?.trim() ? row.imageUrl : getProductThumbnail(row.serviceKey, row.name),
+        description: row.customDescription || row.description,
+        customDescription: row.customDescription,
+        stock: available,
+        stockSyncedAt: lastStockSyncedAt,
+        stockFresh: true,
+        quantityTiers: tiers,
+        maxAllowedQuantity,
+        warrantyText: row.warrantyText || "ওয়ারেন্টি নেই",
+        warrantyDays: row.warrantyDays || 0,
+        isFlashSale: row.isFlashSale || 0,
+        flashSalePrice: row.flashSalePrice || null,
+        flashSaleEndsAt: row.flashSaleEndsAt || null,
+        tags: row.tags || "",
+        slug: row.slug || row.serviceKey,
+      };
     }),
     storeInfo: publicProcedure.query(async () => {
       const s = await settings();
@@ -641,9 +697,17 @@ export const shopRouter = router({
         confirmPriceReview: z.boolean().default(false),
         customDescription: z.string().max(10_000).nullable().optional(),
         imageUrl: z.string().max(2048).nullable().optional(),
+        warrantyText: z.string().max(128).nullable().optional(),
+        warrantyDays: z.number().int().min(0).optional(),
+        isFlashSale: z.boolean().optional(),
+        flashSalePrice: z.number().min(0).nullable().optional(),
+        flashSaleEndsAt: z.string().nullable().optional(),
+        tags: z.string().max(500).nullable().optional(),
+        slug: z.string().max(160).nullable().optional(),
       })).mutation(async ({ input }) => {
         const db = await getDb();
         if (!db) throw new Error("Database is not available");
+        await ensureSchemaMigrations(db);
         const [row] = await db.select().from(activationServices).where(eq(activationServices.serviceKey, input.serviceKey)).limit(1);
         if (!row) throw new Error("Service পাওয়া যায়নি; আগে catalog sync করুন।");
         if (input.isListed && (!row.isActive || row.stock - row.reservedStock < 1 || input.retailPrice <= 0)) throw new Error("বিক্রির জন্য active available stock ও শূন্যের বেশি retail price প্রয়োজন।");
@@ -665,6 +729,27 @@ export const shopRouter = router({
         }
         if (input.imageUrl !== undefined) {
           updateValues.imageUrl = input.imageUrl?.trim() ?? "";
+        }
+        if (input.warrantyText !== undefined) {
+          updateValues.warrantyText = input.warrantyText?.trim() || "ওয়ারেন্টি নেই";
+        }
+        if (input.warrantyDays !== undefined) {
+          updateValues.warrantyDays = input.warrantyDays;
+        }
+        if (input.isFlashSale !== undefined) {
+          updateValues.isFlashSale = input.isFlashSale ? 1 : 0;
+        }
+        if (input.flashSalePrice !== undefined) {
+          updateValues.flashSalePrice = input.flashSalePrice;
+        }
+        if (input.flashSaleEndsAt !== undefined) {
+          updateValues.flashSaleEndsAt = input.flashSaleEndsAt ? new Date(input.flashSaleEndsAt) : null;
+        }
+        if (input.tags !== undefined) {
+          updateValues.tags = input.tags?.trim() || "";
+        }
+        if (input.slug !== undefined) {
+          updateValues.slug = input.slug?.trim() || null;
         }
         await db.update(activationServices).set(updateValues).where(eq(activationServices.serviceKey, input.serviceKey));
         return { success: true };
@@ -953,8 +1038,30 @@ export const shopRouter = router({
         retailPrice: z.number().positive("সঠিক বিক্রয়মূল্য দিন"),
         imageUrl: z.string().trim().max(2048).optional(),
         bulkCredentials: z.string().optional(),
+        warrantyText: z.string().max(128).optional(),
+        warrantyDays: z.number().int().min(0).optional(),
+        isFlashSale: z.number().int().min(0).max(1).optional(),
+        flashSalePrice: z.number().positive().optional(),
+        tags: z.string().max(500).optional(),
+        slug: z.string().max(160).optional(),
       })).mutation(async ({ input }) => {
         return createCustomProduct(input);
+      }),
+      updateProduct: adminProcedure.input(z.object({
+        serviceKey: z.string(),
+        name: z.string().trim().min(2).max(255).optional(),
+        retailPrice: z.number().positive().optional(),
+        customDescription: z.string().trim().max(10_000).nullable().optional(),
+        imageUrl: z.string().trim().max(2048).nullable().optional(),
+        warrantyText: z.string().max(128).nullable().optional(),
+        warrantyDays: z.number().int().min(0).optional(),
+        isFlashSale: z.number().int().min(0).max(1).optional(),
+        flashSalePrice: z.number().positive().nullable().optional(),
+        tags: z.string().max(500).nullable().optional(),
+        slug: z.string().max(160).nullable().optional(),
+        isListed: z.number().int().min(0).max(1).optional(),
+      })).mutation(async ({ input }) => {
+        return updateCustomProduct(input);
       }),
       addBulk: adminProcedure.input(z.object({
         serviceKey: z.string().trim().min(1),
