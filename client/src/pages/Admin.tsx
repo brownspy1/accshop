@@ -1467,28 +1467,22 @@ function CreateCustomProductModal({ onClose, onSuccess }: { onClose: () => void;
               <label style={{ display: "block", fontSize: "12px", fontWeight: 700, marginBottom: "4px" }}>
                 ব্র্যান্ড লোগো / আইকন
               </label>
-              <div style={{ display: "flex", gap: "6px" }}>
-                <select
-                  className="admin-password-input"
-                  style={{ flex: 1 }}
-                  value={selectedBrand}
-                  onChange={(e) => setSelectedBrand(e.target.value)}
-                >
-                  {BRAND_ICON_PRESETS.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.label} ({p.category})
-                    </option>
-                  ))}
-                </select>
+              <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                <div style={{ flex: 1, display: "flex", alignItems: "center", gap: "8px", background: "#f8fafc", padding: "6px 10px", borderRadius: "8px", border: "1px solid #cbd5e1" }}>
+                  <BrandLogoSquircle imageUrl={selectedBrand} size={28} />
+                  <span style={{ fontSize: "12px", fontWeight: 600, color: "#334155", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {BRAND_ICON_PRESETS.find(p => p.id === selectedBrand || p.iconUrl === selectedBrand)?.label || (selectedBrand ? "নির্বাচিত আইকন" : "কোনো আইকন সিলেক্ট করা হয়নি")}
+                  </span>
+                </div>
                 <button
                   type="button"
                   className="button button-sm button-light"
-                  style={{ padding: "0 10px", fontSize: "11px", display: "inline-flex", alignItems: "center", gap: "4px" }}
+                  style={{ padding: "0 12px", height: "38px", fontSize: "12px", display: "inline-flex", alignItems: "center", gap: "5px" }}
                   onClick={() => setPickerModalOpen(true)}
-                  title="ব্র্যান্ড আইকন লাইব্রেরি"
+                  title="ব্র্যান্ড আইকন লাইব্রেরি খুলুন"
                 >
-                  <Sparkles size={12} />
-                  ব্রাউজ
+                  <Sparkles size={14} className="text-emerald-600" />
+                  ব্রাউজ লাইব্রেরি
                 </button>
               </div>
             </div>
