@@ -22,9 +22,17 @@ import {
   deleteAdminPasskey,
 } from "./passkeyAuth";
 import { systemRouter } from "./_core/systemRouter";
-import { publicProcedure, router } from "./_core/trpc";
+import { publicProcedure, adminProcedure, router } from "./_core/trpc";
 import { shopRouter } from "./shopRouter";
 import { customerAccountRouter } from "./customerRouter";
+import {
+  findAdminByUsernameOrEmail,
+  listAllAdminUsers,
+  createAdminUser,
+  deleteAdminUser,
+  markAdminSignedIn,
+  ensureDefaultAdminExists,
+} from "./adminUsersAuth";
 
 export const appRouter = router({
     // if you need to use socket.io, read and register route in server/_core/index.ts, all api should start with '/api/' so that the gateway can route correctly
@@ -44,44 +52,43 @@ export const appRouter = router({
         throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: rateErr.message });
       }
 
-      const database = await getDb();
+      await ensureDefaultAdminExists();
+
+      const candidateUser = input.username?.trim();
+      let matchedAdmin: { id: number; username: string; email: string; name: string | null } | null = null;
       let matched = false;
-      let activeAdminUsername = "Store Admin";
-      let activeAdminEmail = process.env.ACCZONE_ADMIN_EMAIL?.trim() || "admin@acczone.shop";
 
-      if (database) {
-        try {
-          const [s] = await database.select().from(storeSettings).where(eq(storeSettings.id, 1)).limit(1);
-          if (s) {
-            if (s.adminUsername) activeAdminUsername = s.adminUsername;
-            if (s.adminEmail) activeAdminEmail = s.adminEmail;
-
-            if (s.adminPasswordHash && s.adminPasswordSalt) {
-              const pwMatches = verifyAdminPassword(input.password.trim(), s.adminPasswordHash, s.adminPasswordSalt);
-              if (pwMatches) {
-                if (input.username?.trim()) {
-                  const candidateUser = input.username.trim().toLowerCase();
-                  if (
-                    candidateUser === (s.adminUsername || "admin").toLowerCase() ||
-                    candidateUser === (s.adminEmail || "").toLowerCase() ||
-                    candidateUser === "admin"
-                  ) {
-                    matched = true;
-                  }
-                } else {
-                  matched = true;
-                }
-              }
-            }
-          }
-        } catch (e) {
-          console.warn("[Auth] Error reading storeSettings for admin login:", e);
+      if (candidateUser) {
+        // STRICT LOOKUP: Candidate username or email MUST match a registered admin!
+        const found = await findAdminByUsernameOrEmail(candidateUser);
+        if (!found) {
+          // Unknown username - REJECT IMMEDIATELY without checking any fallback secret!
+          recordFailedLogin(clientIp);
+          throw new TRPCError({
+            code: "UNAUTHORIZED",
+            message: "ইউজারনেম বা পাসওয়ার্ড সঠিক নয়। শুধুমাত্র রেজিস্টার্ড অ্যাডমিন প্রবেশ করতে পারবেন।"
+          });
         }
-      }
 
-      // If not matched by database password hash, fallback to environment secret
-      if (!matched) {
-        matched = verifyFallbackAdminSecret(input.password.trim());
+        // Verify password against THIS specific admin's scrypt hash
+        if (verifyAdminPassword(input.password.trim(), found.passwordHash, found.passwordSalt)) {
+          matched = true;
+          matchedAdmin = found;
+        }
+      } else {
+        // Fallback for automated tests or legacy single-field input without username:
+        const admins = await listAllAdminUsers();
+        if (admins.length > 0) {
+          const primary = await findAdminByUsernameOrEmail(admins[0].username);
+          if (primary && verifyAdminPassword(input.password.trim(), primary.passwordHash, primary.passwordSalt)) {
+            matched = true;
+            matchedAdmin = primary;
+          }
+        }
+        // Environment fallback only if no custom password matched and no username was provided
+        if (!matched && verifyFallbackAdminSecret(input.password.trim())) {
+          matched = true;
+        }
       }
 
       if (!matched) {
@@ -90,6 +97,13 @@ export const appRouter = router({
       }
 
       recordSuccessfulLogin(clientIp);
+
+      const activeAdminUsername = matchedAdmin?.username || matchedAdmin?.name || "Store Admin";
+      const activeAdminEmail = matchedAdmin?.email || process.env.ACCZONE_ADMIN_EMAIL?.trim() || "admin@acczone.shop";
+
+      if (matchedAdmin) {
+        await markAdminSignedIn(matchedAdmin.id);
+      }
       setDynamicAdminEmail(activeAdminEmail);
       const adminOpenId = `admin_${createHash("sha256").update(activeAdminEmail).digest("hex").slice(0, 16)}`;
 
@@ -119,6 +133,36 @@ export const appRouter = router({
         success: true,
         user: { openId: adminOpenId, name: activeAdminUsername, email: activeAdminEmail, role: "admin" },
       } as const;
+    }),
+
+    // --- Registered Admin Users Management ---
+    adminUsers: router({
+      list: adminProcedure.query(async () => {
+        return await listAllAdminUsers();
+      }),
+      create: adminProcedure.input(z.object({
+        username: z.string().trim().min(2, "ইউজারনেম কমপক্ষে ২ অক্ষরের হতে হবে").max(64),
+        email: z.string().trim().email("সঠিক ইমেইল ঠিকানা দিন").max(320),
+        password: z.string().min(6, "পাসওয়ার্ড কমপক্ষে ৬ অক্ষরের হতে হবে").max(128),
+        role: z.enum(["admin", "superadmin"]).default("admin"),
+        name: z.string().trim().max(128).optional(),
+      })).mutation(async ({ input }) => {
+        const user = await createAdminUser(input);
+        return {
+          success: true,
+          user,
+          message: `@${user.username} অ্যাডমিন সফলভাবে তৈরি হয়েছে!`,
+        };
+      }),
+      delete: adminProcedure.input(z.object({
+        id: z.number().int().positive(),
+      })).mutation(async ({ input, ctx }) => {
+        await deleteAdminUser(input.id, ctx.user.email || "");
+        return {
+          success: true,
+          message: "অ্যাডমিন একাউন্টটি সফলভাবে মুছে ফেলা হয়েছে।",
+        };
+      }),
     }),
 
     // --- WebAuthn / Passkey Biometric Admin Security ---

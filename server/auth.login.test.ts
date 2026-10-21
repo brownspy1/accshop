@@ -66,4 +66,18 @@ describe("auth.loginWithSecret", () => {
     );
     expect(setCookies).toHaveLength(0);
   });
+
+  it("strictly rejects any unknown or unregistered username even if password is correct", async () => {
+    process.env.ADMIN_PASSWORD = "test-secret-password-xyz";
+    const { ctx, setCookies } = createUnauthContext();
+    const caller = appRouter.createCaller(ctx);
+
+    await expect(caller.auth.loginWithSecret({
+      username: "random_hacker_user",
+      password: "test-secret-password-xyz"
+    })).rejects.toThrow(
+      /শুধুমাত্র রেজিস্টার্ড অ্যাডমিন প্রবেশ করতে পারবেন/
+    );
+    expect(setCookies).toHaveLength(0);
+  });
 });

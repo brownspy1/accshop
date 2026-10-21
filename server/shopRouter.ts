@@ -3,7 +3,7 @@ import { customAlphabet } from "nanoid";
 import { TRPCError } from "@trpc/server";
 import { and, desc, eq, gt, inArray, notInArray, or, sql } from "drizzle-orm";
 import { z } from "zod";
-import { activationServices, customerAccounts, customProductInventory, orderItems, orders, providerCredentials, storeSettings } from "../drizzle/schema";
+import { activationServices, customerAccounts, customProductInventory, orderItems, orders, providerCredentials, storeSettings, adminUsers } from "../drizzle/schema";
 import { AcczoneError, buyActivation, getBalance, getHistory, getServices, hasApiKey, testAndSaveApiKey } from "./acczone";
 import { CouponShopsError, createCouponOrder, getCouponBalance, getCouponServices, retrieveCouponOrder, verifyAndSaveCouponShopsKey } from "./couponshops";
 import { BotResellerError, createBotResellerOrder, getBotResellerBalance, normalizeBotResellerUrl, retrieveBotResellerOrder, testBotResellerConnection } from "./botReseller";
@@ -813,7 +813,7 @@ export const shopRouter = router({
         newUsername: z.string().trim().min(2).max(128).optional(),
         newEmail: z.string().trim().email().max(320).optional(),
         newPassword: z.string().min(6, "New password must be at least 6 characters").max(128).optional(),
-      })).mutation(async ({ input }) => {
+      })).mutation(async ({ input, ctx }) => {
         const db = await getDb();
         if (!db) throw new Error("Database is not available");
         const s = await settings();
@@ -836,21 +836,35 @@ export const shopRouter = router({
           updatedAt: new Date(),
         };
 
+        const adminUserPayload: Record<string, unknown> = {
+          updatedAt: new Date(),
+        };
+
         if (input.newUsername?.trim()) {
           updatePayload.adminUsername = input.newUsername.trim();
+          adminUserPayload.username = input.newUsername.trim();
         }
         if (input.newEmail?.trim()) {
           const email = input.newEmail.trim().toLowerCase();
           updatePayload.adminEmail = email;
+          adminUserPayload.email = email;
           setDynamicAdminEmail(email);
         }
         if (input.newPassword?.trim()) {
           const { hash, salt } = hashAdminPassword(input.newPassword.trim());
           updatePayload.adminPasswordHash = hash;
           updatePayload.adminPasswordSalt = salt;
+          adminUserPayload.passwordHash = hash;
+          adminUserPayload.passwordSalt = salt;
         }
 
         await db.update(storeSettings).set(updatePayload).where(eq(storeSettings.id, 1));
+
+        // Sync with adminUsers table
+        const activeEmail = (ctx.user?.email || s.adminEmail || "").toLowerCase();
+        if (activeEmail) {
+          await db.update(adminUsers).set(adminUserPayload).where(sql`LOWER(${adminUsers.email}) = ${activeEmail}`);
+        }
 
         return {
           success: true,

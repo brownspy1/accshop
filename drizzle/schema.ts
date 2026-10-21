@@ -198,6 +198,19 @@ export const adminPasskeys = pgTable("admin_passkeys", {
   lastUsedAt: timestamp("lastUsedAt"),
 });
 
+export const adminUsers = pgTable("admin_users", {
+  id: serial("id").primaryKey(),
+  username: varchar("username", { length: 64 }).notNull().unique(),
+  email: varchar("email", { length: 320 }).notNull().unique(),
+  passwordHash: varchar("password_hash", { length: 255 }).notNull(),
+  passwordSalt: varchar("password_salt", { length: 255 }).notNull(),
+  role: varchar("role", { length: 32 }).notNull().default("admin"),
+  name: varchar("name", { length: 128 }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  lastSignedIn: timestamp("last_signed_in"),
+});
+
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
 export type ActivationService = typeof activationServices.$inferSelect;
@@ -209,3 +222,5 @@ export type CustomProductInventory = typeof customProductInventory.$inferSelect;
 export type InsertCustomProductInventory = typeof customProductInventory.$inferInsert;
 export type AdminPasskey = typeof adminPasskeys.$inferSelect;
 export type InsertAdminPasskey = typeof adminPasskeys.$inferInsert;
+export type AdminUser = typeof adminUsers.$inferSelect;
+export type InsertAdminUser = typeof adminUsers.$inferInsert;

@@ -51,6 +51,22 @@ export async function ensureSchemaMigrations(db: any) {
       CREATE INDEX IF NOT EXISTS custom_inventory_order_idx ON custom_product_inventory ("orderId");
     `);
 
+    // 4. Ensure admin_users table exists for multi-admin security and user management
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS admin_users (
+        id serial PRIMARY KEY,
+        username varchar(64) NOT NULL UNIQUE,
+        email varchar(320) NOT NULL UNIQUE,
+        password_hash varchar(255) NOT NULL,
+        password_salt varchar(255) NOT NULL,
+        role varchar(32) NOT NULL DEFAULT 'admin',
+        name varchar(128),
+        created_at timestamp DEFAULT NOW() NOT NULL,
+        updated_at timestamp DEFAULT NOW() NOT NULL,
+        last_signed_in timestamp
+      );
+    `);
+
     migrationEnsured = true;
   } catch (err) {
     console.warn("[Schema] Migration error (safe fallback continues):", err);

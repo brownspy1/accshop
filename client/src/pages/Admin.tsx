@@ -3,7 +3,7 @@ import { BrandLogoSquircle, BRAND_ICON_PRESETS, BrandIconPickerModal } from "@/c
 import { startLogin } from "@/const";
 import { trpc } from "@/lib/trpc";
 import { formatMoney, orderStatusLabels } from "@/lib/shop";
-import { Activity, AlertTriangle, ArrowDownRight, ArrowLeft, ArrowRight, BadgeCheck, Banknote, Bot, Boxes, Check, CheckCircle2, ChevronDown, ChevronRight, CircleDollarSign, ClipboardList, Clock3, Copy, CreditCard, Database, ExternalLink, Eye, EyeOff, FileText, Fingerprint, Globe, ImagePlus, KeyRound, LayoutDashboard, Link2, LoaderCircle, LogOut, Mail, PackageCheck, Plus, RefreshCw, RotateCcw, Save, Search, Settings2, Share2, Shield, ShieldCheck, ShoppingBag, Sparkles, Store, Tag, Trash2, TrendingUp, Wallet, X, Zap } from "lucide-react";
+import { Activity, AlertTriangle, ArrowDownRight, ArrowLeft, ArrowRight, BadgeCheck, Banknote, Bot, Boxes, Check, CheckCircle2, ChevronDown, ChevronRight, CircleDollarSign, ClipboardList, Clock3, Copy, CreditCard, Database, ExternalLink, Eye, EyeOff, FileText, Fingerprint, Globe, ImagePlus, KeyRound, LayoutDashboard, Link2, LoaderCircle, LogOut, Mail, PackageCheck, Plus, RefreshCw, RotateCcw, Save, Search, Settings2, Share2, Shield, ShieldCheck, ShoppingBag, Sparkles, Store, Tag, Trash2, TrendingUp, UserCheck, UserPlus, Users, Wallet, X, Zap } from "lucide-react";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { Link } from "wouter";
 import { toast } from "sonner";
@@ -77,22 +77,37 @@ export default function Admin() {
       <div className="eyebrow">ADMIN ACCESS</div>
       <h1>Secure sign in.</h1>
       <p>এই control panel-এ প্রবেশ করতে Admin credentials / key দিন।</p>
-      <form onSubmit={(e) => { e.preventDefault(); if (adminPassword.trim()) loginWithSecret.mutate({ username: adminUsername.trim() || undefined, password: adminPassword.trim() }); }} className="admin-login-form">
+      <form onSubmit={(e) => {
+        e.preventDefault();
+        const trimmedUser = adminUsername.trim();
+        const trimmedPw = adminPassword.trim();
+        if (!trimmedUser) {
+          toast.error("Admin username অথবা email দেওয়া আবশ্যক।");
+          return;
+        }
+        if (!trimmedPw) {
+          toast.error("Admin password দেওয়া আবশ্যক।");
+          return;
+        }
+        loginWithSecret.mutate({ username: trimmedUser, password: trimmedPw });
+      }} className="admin-login-form">
         <input
           type="text"
           value={adminUsername}
           onChange={(e) => setAdminUsername(e.target.value)}
-          placeholder="Admin username অথবা email (ঐচ্ছিক)"
+          placeholder="Admin username অথবা email *"
           className="admin-password-input"
           style={{ marginBottom: "10px" }}
+          required
         />
         <div className="password-input-wrap">
           <input
             type={showPassword ? "text" : "password"}
             value={adminPassword}
             onChange={(e) => setAdminPassword(e.target.value)}
-            placeholder="Admin password / key দিন"
+            placeholder="Admin password দিন *"
             className="admin-password-input"
+            required
             autoFocus
           />
           <button type="button" className="pw-toggle" onClick={() => setShowPassword(!showPassword)} title={showPassword ? "Hide" : "Show"}>
@@ -2699,6 +2714,36 @@ function AdminSecuritySection() {
   });
   const [registeringPasskey, setRegisteringPasskey] = useState(false);
 
+  // Registered Admin Accounts state & mutations
+  const { data: currentUser } = trpc.auth.me.useQuery();
+  const adminUsersQuery = trpc.auth.adminUsers.list.useQuery();
+  const createAdmin = trpc.auth.adminUsers.create.useMutation({
+    onSuccess: (res) => {
+      toast.success(res.message);
+      setNewAdminModalOpen(false);
+      setAddUsername("");
+      setAddEmail("");
+      setAddPassword("");
+      setAddConfirmPassword("");
+      void adminUsersQuery.refetch();
+    },
+    onError: (err) => toast.error(err.message || "নতুন অ্যাডমিন তৈরি ব্যর্থ হয়েছে"),
+  });
+  const deleteAdmin = trpc.auth.adminUsers.delete.useMutation({
+    onSuccess: (res) => {
+      toast.success(res.message);
+      void adminUsersQuery.refetch();
+    },
+    onError: (err) => toast.error(err.message || "অ্যাডমিন ডিলিট ব্যর্থ হয়েছে"),
+  });
+
+  const [newAdminModalOpen, setNewAdminModalOpen] = useState(false);
+  const [addUsername, setAddUsername] = useState("");
+  const [addEmail, setAddEmail] = useState("");
+  const [addPassword, setAddPassword] = useState("");
+  const [addConfirmPassword, setAddConfirmPassword] = useState("");
+  const [addRole, setAddRole] = useState<"admin" | "superadmin">("admin");
+
   const handleRegisterPasskey = async () => {
     try {
       setRegisteringPasskey(true);
@@ -2959,6 +3004,243 @@ function AdminSecuritySection() {
             ))}
           </div>
         )}
+      {/* Registered Admin Accounts Management Section */}
+      <section className="admin-panel settings-panel" style={{ marginTop: "20px" }}>
+        <div className="panel-top">
+          <div>
+            <h2 className="flex items-center gap-2">
+              <Users size={20} className="text-emerald-700" />
+              রেজিস্টার্ড অ্যাডমিন ইউজার তালিকা (Registered Admin Accounts)
+            </h2>
+            <p>
+              এই স্টোরের সক্রিয় অ্যাডমিন অ্যাকাউন্টসমূহ। শুধুমাত্র এখানে তালিকাভুক্ত ইউজারনেম এবং সংশ্লিষ্ট পাসওয়ার্ড দিলে অ্যাডমিন প্যানেলে লগইন করা যাবে।
+            </p>
+          </div>
+          <button
+            type="button"
+            className="button button-primary"
+            onClick={() => setNewAdminModalOpen(true)}
+            style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}
+          >
+            <UserPlus size={15} />
+            নতুন Admin যোগ করুন
+          </button>
+        </div>
+
+        {adminUsersQuery.isLoading ? (
+          <PanelLoading />
+        ) : !adminUsersQuery.data || adminUsersQuery.data.length === 0 ? (
+          <div className="empty-admin" style={{ padding: "20px", background: "#f8fbf9", borderRadius: "10px", border: "1px dashed #cde2d7" }}>
+            <Users size={28} style={{ color: "#0b765c" }} />
+            <span style={{ fontSize: "13px", color: "#64748b", marginTop: "6px" }}>কোনো রেজিস্টার্ড অ্যাডমিন পাওয়া যায়নি।</span>
+          </div>
+        ) : (
+          <div style={{ display: "grid", gap: "10px", marginTop: "12px" }}>
+            <div style={{ fontSize: "12px", fontWeight: 700, color: "#475569" }}>
+              সর্বমোট রেজিস্টার্ড অ্যাডমিন ({adminUsersQuery.data.length} জন):
+            </div>
+            {adminUsersQuery.data.map((u) => {
+              const isCurrentUser = currentUser?.email?.toLowerCase() === u.email.toLowerCase();
+              return (
+                <div
+                  key={u.id}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    padding: "12px 16px",
+                    background: isCurrentUser ? "#f0fdf4" : "#ffffff",
+                    border: isCurrentUser ? "1.5px solid #0b765c" : "1px solid #e2ece6",
+                    borderRadius: "10px",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                    <div style={{
+                      width: "38px",
+                      height: "38px",
+                      borderRadius: "50%",
+                      background: isCurrentUser ? "#0b765c" : "#e2e8f0",
+                      color: isCurrentUser ? "#ffffff" : "#334155",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontWeight: 700,
+                      fontSize: "14px",
+                    }}>
+                      {u.username.slice(0, 1).toUpperCase()}
+                    </div>
+                    <div>
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                        <b style={{ fontSize: "14px", color: "#0f172a" }}>@{u.username}</b>
+                        {isCurrentUser && (
+                          <span className="status-chip status-fulfilled" style={{ fontSize: "10px", padding: "1px 6px" }}>
+                            বর্তমান সেশন (You)
+                          </span>
+                        )}
+                        <span className={`status-chip ${u.role === "superadmin" ? "status-paid" : "status-unlisted"}`} style={{ fontSize: "10px", padding: "1px 6px" }}>
+                          {u.role === "superadmin" ? "Super Admin" : "Admin"}
+                        </span>
+                      </div>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: "12px", fontSize: "11px", color: "#64748b", marginTop: "2px" }}>
+                        <span>ইমেইল: <b>{u.email}</b></span>
+                        <span>যুক্ত হয়েছে: {dateText(u.createdAt)}</span>
+                        {u.lastSignedIn && <span>সর্বশেষ সাইন ইন: {dateText(u.lastSignedIn)}</span>}
+                      </div>
+                    </div>
+                  </div>
+
+                  {!isCurrentUser && (
+                    <button
+                      type="button"
+                      className="button button-sm button-light"
+                      style={{ color: "#dc2626", borderColor: "#fecaca" }}
+                      onClick={() => {
+                        if (window.confirm(`আপনি কি নিশ্চিত যে "@${u.username}" (${u.email}) অ্যাডমিন অ্যাকাউন্টটি মুছে ফেলতে চান?`)) {
+                          deleteAdmin.mutate({ id: u.id });
+                        }
+                      }}
+                      disabled={deleteAdmin.isPending}
+                      title="অ্যাডমিন ডিলিট করুন"
+                    >
+                      <Trash2 size={13} /> ডিলিট
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
+      {/* Modal: Add New Admin */}
+      {newAdminModalOpen && (
+        <div className="product-modal-backdrop" onClick={() => setNewAdminModalOpen(false)}>
+          <div className="vault-modal-card" onClick={e => e.stopPropagation()} style={{ maxWidth: "460px" }}>
+            <button type="button" className="product-modal-close" onClick={() => setNewAdminModalOpen(false)}>
+              <X size={18} />
+            </button>
+
+            <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "16px" }}>
+              <div style={{ background: "#e6f4ef", color: "#0b765c", padding: "8px", borderRadius: "10px" }}>
+                <UserPlus size={20} />
+              </div>
+              <div>
+                <h2 style={{ fontSize: "18px", fontWeight: 700, margin: 0 }}>নতুন অ্যাডমিন একাউন্ট তৈরি</h2>
+                <p style={{ margin: "2px 0 0", fontSize: "12px", color: "#64748b" }}>
+                  নতুন অ্যাডমিনের ইউজারনেম, ইমেইল ও পাসওয়ার্ড দিন।
+                </p>
+              </div>
+            </div>
+
+            <form onSubmit={(e) => {
+              e.preventDefault();
+              if (addPassword !== addConfirmPassword) {
+                toast.error("পাসওয়ার্ড ও কনফার্ম পাসওয়ার্ড মিলছে না।");
+                return;
+              }
+              createAdmin.mutate({
+                username: addUsername.trim(),
+                email: addEmail.trim(),
+                password: addPassword.trim(),
+                role: addRole,
+              });
+            }} style={{ display: "grid", gap: "12px" }}>
+              <div>
+                <label style={{ display: "block", fontSize: "12px", fontWeight: 700, marginBottom: "4px" }}>
+                  অ্যাডমিন Username * (লগইনে ব্যবহৃত হবে)
+                </label>
+                <input
+                  type="text"
+                  required
+                  pattern="[A-Za-z0-9_-]+"
+                  minLength={2}
+                  maxLength={64}
+                  className="admin-password-input"
+                  value={addUsername}
+                  onChange={e => setAddUsername(e.target.value)}
+                  placeholder="যেমন: manager, admin_fahim"
+                />
+              </div>
+
+              <div>
+                <label style={{ display: "block", fontSize: "12px", fontWeight: 700, marginBottom: "4px" }}>
+                  অ্যাডমিন ইমেইল *
+                </label>
+                <input
+                  type="email"
+                  required
+                  maxLength={320}
+                  className="admin-password-input"
+                  value={addEmail}
+                  onChange={e => setAddEmail(e.target.value)}
+                  placeholder="manager@example.com"
+                />
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+                <div>
+                  <label style={{ display: "block", fontSize: "12px", fontWeight: 700, marginBottom: "4px" }}>
+                    পাসওয়ার্ড * (কমপক্ষে ৬ অক্ষর)
+                  </label>
+                  <input
+                    type="password"
+                    required
+                    minLength={6}
+                    maxLength={128}
+                    className="admin-password-input"
+                    value={addPassword}
+                    onChange={e => setAddPassword(e.target.value)}
+                    placeholder="পাসওয়ার্ড"
+                  />
+                </div>
+                <div>
+                  <label style={{ display: "block", fontSize: "12px", fontWeight: 700, marginBottom: "4px" }}>
+                    কনফার্ম পাসওয়ার্ড *
+                  </label>
+                  <input
+                    type="password"
+                    required
+                    minLength={6}
+                    maxLength={128}
+                    className="admin-password-input"
+                    value={addConfirmPassword}
+                    onChange={e => setAddConfirmPassword(e.target.value)}
+                    placeholder="পুনরায় পাসওয়ার্ড"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label style={{ display: "block", fontSize: "12px", fontWeight: 700, marginBottom: "4px" }}>
+                  অ্যাডমিন রোল (Role)
+                </label>
+                <select
+                  className="admin-password-input"
+                  value={addRole}
+                  onChange={e => setAddRole(e.target.value as any)}
+                >
+                  <option value="admin">Standard Admin (ম্যানেজমেন্ট ও অর্ডারস)</option>
+                  <option value="superadmin">Super Admin (সম্পূর্ণ সিস্টেম কন্ট্রোল)</option>
+                </select>
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "8px" }}>
+                <button type="button" className="button button-light" onClick={() => setNewAdminModalOpen(false)}>
+                  বাতিল
+                </button>
+                <button
+                  type="submit"
+                  className="button button-primary"
+                  disabled={createAdmin.isPending || !addUsername.trim() || !addPassword.trim()}
+                >
+                  {createAdmin.isPending ? <LoaderCircle size={15} className="spin" /> : <UserPlus size={15} />}
+                  অ্যাডমিন তৈরি করুন
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
       </section>
     </>
   );
