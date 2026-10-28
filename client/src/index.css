@@ -509,3 +509,284 @@ textarea:focus-visible {
   background: #e6f4ef;
 }
 
+/* ==========================================================================
+   ADMIN QUICK BIOMETRIC SCREEN LOCK & SETTINGS SUB-TABS
+   ========================================================================== */
+.admin-lock-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(8, 24, 20, 0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  padding: 20px;
+}
+
+.admin-lock-card {
+  background: #ffffff;
+  border: 1px solid #d4e5dc;
+  border-radius: 24px;
+  max-width: 440px;
+  width: 100%;
+  padding: 34px 30px;
+  box-shadow: 0 25px 60px -12px rgba(8, 36, 28, 0.38), 0 0 0 1px rgba(11, 118, 92, 0.1);
+  text-align: center;
+  animation: lockModalPop 0.24s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes lockModalPop {
+  0% { opacity: 0; transform: scale(0.95) translateY(10px); }
+  100% { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.lock-icon-badge {
+  width: 58px;
+  height: 58px;
+  margin: 0 auto 16px;
+  border-radius: 18px;
+  background: #eafaf1;
+  border: 1.5px solid #bce6cf;
+  display: grid;
+  place-items: center;
+  color: #08785b;
+  box-shadow: 0 4px 14px rgba(8, 120, 91, 0.16);
+}
+
+.lock-header .lock-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  color: #08785b;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+
+.lock-header h1 {
+  font-size: 22px;
+  font-weight: 800;
+  color: #102a2b;
+  margin: 0 0 8px;
+  line-height: 1.25;
+}
+
+.lock-header p {
+  font-size: 12.5px;
+  color: #5a6e66;
+  line-height: 1.6;
+  margin: 0 0 20px;
+}
+
+.lock-user-chip {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  background: #f4faf6;
+  border: 1px solid #dce8e1;
+  border-radius: 12px;
+  margin-bottom: 20px;
+  text-align: left;
+}
+
+.lock-user-avatar {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  background: #08785b;
+  color: #ffffff;
+  display: grid;
+  place-items: center;
+  font-size: 16px;
+  font-weight: 800;
+  flex-shrink: 0;
+}
+
+.lock-user-details {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.lock-user-details strong {
+  font-size: 13.5px;
+  font-weight: 750;
+  color: #102a2b;
+}
+
+.lock-user-details span {
+  font-size: 11.5px;
+  color: #647870;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lock-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.lock-biometric-btn {
+  width: 100%;
+  padding: 13px 18px;
+  font-size: 13.5px;
+  font-weight: 750;
+  background: linear-gradient(135deg, #0b765c 0%, #065340 100%) !important;
+  color: #ffffff !important;
+  border-radius: 12px !important;
+  border: none !important;
+  box-shadow: 0 4px 14px rgba(11, 118, 92, 0.28) !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.lock-biometric-btn:hover:not(:disabled) {
+  background: linear-gradient(135deg, #0e8b6d 0%, #086a52 100%) !important;
+  transform: translateY(-1px);
+}
+
+.lock-divider {
+  display: flex;
+  align-items: center;
+  text-align: center;
+  margin: 18px 0;
+  color: #7a8d85;
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.lock-divider::before, .lock-divider::after {
+  content: "";
+  flex: 1;
+  border-bottom: 1px solid #e1e9e4;
+}
+
+.lock-divider span {
+  padding: 0 10px;
+}
+
+.lock-pw-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.lock-input {
+  border-radius: 10px !important;
+  padding: 10px 14px !important;
+  font-size: 13.5px !important;
+}
+
+.lock-submit-btn {
+  width: 100%;
+  padding: 11px 16px;
+  font-size: 13px;
+  font-weight: 700;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.lock-footer {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid #edf2ee;
+  display: flex;
+  justify-content: center;
+}
+
+.lock-logout-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #6a7c75;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.lock-logout-btn:hover {
+  color: #b33240;
+}
+
+/* Settings Sub-Tabs Styling */
+.settings-subtabs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 20px 0 24px;
+  border-bottom: 2px solid #e5ece7;
+  padding-bottom: 2px;
+}
+
+.subtab-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 18px;
+  border: none;
+  background: transparent;
+  color: #586b63;
+  font-size: 13px;
+  font-weight: 650;
+  border-radius: 10px 10px 0 0;
+  cursor: pointer;
+  transition: all 0.16s ease;
+  position: relative;
+  bottom: -2px;
+  border-bottom: 2.5px solid transparent;
+}
+
+.subtab-btn:hover {
+  color: #0b765c;
+  background: #f0f8f4;
+}
+
+.subtab-btn.active {
+  color: #08785b;
+  font-weight: 750;
+  background: #f4faf6;
+  border-bottom: 2.5px solid #08785b;
+}
+
+.subtab-btn svg {
+  color: currentColor;
+}
+
+/* Header Quick Lock Button */
+.header-lock-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid #d4e2da;
+  background: #ffffff;
+  color: #2b453d;
+  font-size: 11.5px;
+  font-weight: 650;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.header-lock-btn:hover {
+  border-color: #08785b;
+  color: #08785b;
+  background: #f0fbf5;
+}
+
+

@@ -81,3 +81,64 @@ describe("auth.loginWithSecret", () => {
     expect(setCookies).toHaveLength(0);
   });
 });
+
+describe("auth.verifyUnlockPassword (Quick Screen Lock)", () => {
+  const originalPassword = process.env.ADMIN_PASSWORD;
+
+  afterEach(() => {
+    if (originalPassword === undefined) delete process.env.ADMIN_PASSWORD;
+    else process.env.ADMIN_PASSWORD = originalPassword;
+  });
+
+  function createAdminContext() {
+    return {
+      user: {
+        id: 1,
+        openId: "admin_test",
+        name: "Store Admin",
+        email: "admin@acczone.shop",
+        role: "admin",
+        loginMethod: "key",
+        createdAt: new Date(),
+        lastSignedIn: new Date(),
+      },
+      req: {
+        protocol: "https",
+        headers: {},
+        ip: "127.0.0.1",
+      } as TrpcContext["req"],
+      res: {
+        cookie: () => {},
+      } as unknown as TrpcContext["res"],
+    } as TrpcContext;
+  }
+
+  it("verifies valid unlock password for an active admin session", async () => {
+    process.env.ADMIN_PASSWORD = "my-secret-lock-pw";
+    const ctx = createAdminContext();
+    const caller = appRouter.createCaller(ctx);
+
+    const result = await caller.auth.verifyUnlockPassword({ password: "my-secret-lock-pw" });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects unlock attempt if no admin session exists", async () => {
+    process.env.ADMIN_PASSWORD = "my-secret-lock-pw";
+    const { ctx } = createUnauthContext();
+    const caller = appRouter.createCaller(ctx);
+
+    await expect(caller.auth.verifyUnlockPassword({ password: "my-secret-lock-pw" })).rejects.toThrow(
+      /অ্যাডমিন সেশন সক্রিয় নেই/
+    );
+  });
+
+  it("rejects wrong unlock password with unauthorized error", async () => {
+    process.env.ADMIN_PASSWORD = "my-secret-lock-pw";
+    const ctx = createAdminContext();
+    const caller = appRouter.createCaller(ctx);
+
+    await expect(caller.auth.verifyUnlockPassword({ password: "wrong-unlock-password" })).rejects.toThrow(
+      /অ্যাডমিন পাসওয়ার্ড সঠিক নয়/
+    );
+  });
+});

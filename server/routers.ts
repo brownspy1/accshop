@@ -32,6 +32,7 @@ import {
   deleteAdminUser,
   markAdminSignedIn,
   ensureDefaultAdminExists,
+  verifyAnyAdminPassword,
 } from "./adminUsersAuth";
 
 export const appRouter = router({
@@ -285,6 +286,35 @@ export const appRouter = router({
       }
       return await deleteAdminPasskey(input.id);
     }),
+
+    verifyUnlockPassword: publicProcedure.input(z.object({
+      password: z.string().min(1, "পাসওয়ার্ড দেওয়া আবশ্যক"),
+    })).mutation(async ({ input, ctx }) => {
+      const clientIp = (ctx.req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || ctx.req.ip || "unknown";
+      try {
+        checkLoginRateLimit(clientIp);
+      } catch (rateErr: any) {
+        throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: rateErr.message });
+      }
+
+      if (!ctx.user || ctx.user.role !== "admin") {
+        throw new TRPCError({ code: "UNAUTHORIZED", message: "অ্যাডমিন সেশন সক্রিয় নেই।" });
+      }
+
+      const { matched, adminId } = await verifyAnyAdminPassword(input.password.trim());
+      if (!matched) {
+        recordFailedLogin(clientIp);
+        throw new TRPCError({ code: "UNAUTHORIZED", message: "অ্যাডমিন পাসওয়ার্ড সঠিক নয়। আবার চেষ্টা করুন।" });
+      }
+
+      if (adminId) {
+        await markAdminSignedIn(adminId);
+      }
+
+      recordSuccessfulLogin(clientIp);
+      return { success: true };
+    }),
+
     logout: publicProcedure.mutation(({ ctx }) => {
       const cookieOptions = getSessionCookieOptions(ctx.req);
       ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });

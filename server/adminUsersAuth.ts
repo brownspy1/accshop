@@ -234,3 +234,32 @@ export async function markAdminSignedIn(id: number): Promise<void> {
     console.warn("[AdminAuth] Could not update lastSignedIn for admin:", e);
   }
 }
+
+/**
+ * Verifies if candidatePassword matches any registered admin user or fallback secret.
+ */
+export async function verifyAnyAdminPassword(candidatePassword: string): Promise<{ matched: boolean; adminId?: number }> {
+  const db = await getDb();
+  if (!db) {
+    if (verifyFallbackAdminSecret(candidatePassword)) {
+      return { matched: true };
+    }
+    return { matched: false };
+  }
+
+  await ensureDefaultAdminExists();
+
+  const rows = await db.select().from(adminUsers);
+  for (const row of rows) {
+    if (verifyAdminPassword(candidatePassword, row.passwordHash, row.passwordSalt)) {
+      return { matched: true, adminId: row.id };
+    }
+  }
+
+  if (verifyFallbackAdminSecret(candidatePassword)) {
+    return { matched: true };
+  }
+
+  return { matched: false };
+}
+

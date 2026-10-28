@@ -3,11 +3,12 @@ import { BrandLogoSquircle, BRAND_ICON_PRESETS, BrandIconPickerModal } from "@/c
 import { startLogin } from "@/const";
 import { trpc } from "@/lib/trpc";
 import { formatMoney, orderStatusLabels } from "@/lib/shop";
-import { Activity, AlertTriangle, ArrowDownRight, ArrowLeft, ArrowRight, BadgeCheck, Banknote, Bot, Boxes, Check, CheckCircle2, ChevronDown, ChevronRight, CircleDollarSign, ClipboardList, Clock3, Copy, CreditCard, Database, ExternalLink, Eye, EyeOff, FileText, Fingerprint, Globe, ImagePlus, KeyRound, LayoutDashboard, Link2, LoaderCircle, LogOut, Mail, PackageCheck, Plus, RefreshCw, RotateCcw, Save, Search, Settings2, Share2, Shield, ShieldCheck, ShoppingBag, Sparkles, Store, Tag, Trash2, TrendingUp, UserCheck, UserPlus, Users, Wallet, X, Zap } from "lucide-react";
+import { Activity, AlertTriangle, ArrowDownRight, ArrowLeft, ArrowRight, BadgeCheck, Banknote, Bot, Boxes, Check, CheckCircle2, ChevronDown, ChevronRight, CircleDollarSign, ClipboardList, Clock3, Copy, CreditCard, Database, ExternalLink, Eye, EyeOff, FileText, Fingerprint, Globe, ImagePlus, KeyRound, LayoutDashboard, Link2, LoaderCircle, Lock, LogOut, Mail, PackageCheck, Plus, RefreshCw, RotateCcw, Save, Search, Settings2, Share2, Shield, ShieldCheck, ShoppingBag, Sparkles, Store, Tag, Trash2, TrendingUp, UserCheck, UserPlus, Users, Wallet, X, Zap } from "lucide-react";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { Link } from "wouter";
 import { toast } from "sonner";
 import { startAuthentication, startRegistration } from "@simplewebauthn/browser";
+import { AdminLockScreen, triggerAdminLock } from "@/components/AdminLockScreen";
 
 type AdminTab = "overview" | "services" | "vault" | "orders" | "connection" | "history" | "settings";
 const navItems: { id: AdminTab; label: string; icon: typeof LayoutDashboard }[] = [
@@ -158,12 +159,72 @@ export default function Admin() {
   </div>;
   if (!admin) return <div className="admin-gate"><Link href="/" className="gate-brand"><BrandMark /></Link><div className="gate-card"><span className="gate-icon gate-icon-warning"><ShieldCheck size={22} /></span><div className="eyebrow">RESTRICTED AREA</div><h1>Admin access নেই।</h1><p>এই account-টি store admin allowlist-এ নেই। Shop order details ও API settings server-side protected।</p><button className="button button-secondary gate-button" onClick={() => logout.mutate()} disabled={logout.isPending}>অন্য account-এ sign in করুন <LogOut size={15} /></button><Link href="/" className="back-link"><ArrowLeft size={14} /> Shop-এ ফিরুন</Link></div></div>;
 
-  return <div className="admin-shell">
-    <aside className="admin-sidebar"><Link href="/" className="admin-logo"><BrandMark compact /></Link><div className="admin-label">STORE MANAGEMENT</div><nav>{navItems.map(item => <button type="button" key={item.id} className={tab === item.id ? "admin-nav-item active" : "admin-nav-item"} onClick={() => setTab(item.id)}><item.icon size={17} /><span>{item.label}</span>{item.id === "orders" && <OrderBadge />}</button>)}</nav><div className="sidebar-bottom"><div className="admin-identity"><div className="admin-avatar">{user.name?.slice(0, 1) || "A"}</div><div><b>{user.name || "Store admin"}</b><small>{user.email}</small></div></div><button className="logout-button" onClick={() => logout.mutate()} disabled={logout.isPending}><LogOut size={15} /> Sign out</button></div></aside>
-    <main className="admin-main"><header className="admin-topbar"><div className="admin-breadcrumb"><Link href="/">Store</Link><ChevronRight size={14} /><b>{navItems.find(item => item.id === tab)?.label}</b></div><div className="admin-top-actions"><Link href="/" className="view-store"><ExternalLink size={15} /> View storefront</Link><span className="secure-tag"><ShieldCheck size={13} /> SECURE SESSION</span></div></header>
-      <div className="admin-content">{tab === "overview" && <Overview onSelect={setTab} />}{tab === "services" && <ServicesSection />}{tab === "vault" && <VaultSection />}{tab === "orders" && <OrdersSection />}{tab === "connection" && <ConnectionSection />}{tab === "history" && <HistorySection />}{tab === "settings" && <SettingsSection />}</div>
-    </main>
-  </div>;
+  return (
+    <AdminLockScreen user={user}>
+      <div className="admin-shell">
+        <aside className="admin-sidebar">
+          <Link href="/" className="admin-logo"><BrandMark compact /></Link>
+          <div className="admin-label">STORE MANAGEMENT</div>
+          <nav>
+            {navItems.map(item => (
+              <button
+                type="button"
+                key={item.id}
+                className={tab === item.id ? "admin-nav-item active" : "admin-nav-item"}
+                onClick={() => setTab(item.id)}
+              >
+                <item.icon size={17} />
+                <span>{item.label}</span>
+                {item.id === "orders" && <OrderBadge />}
+              </button>
+            ))}
+          </nav>
+          <div className="sidebar-bottom">
+            <div className="admin-identity">
+              <div className="admin-avatar">{user.name?.slice(0, 1) || "A"}</div>
+              <div>
+                <b>{user.name || "Store admin"}</b>
+                <small>{user.email}</small>
+              </div>
+            </div>
+            <button className="logout-button" onClick={() => logout.mutate()} disabled={logout.isPending}>
+              <LogOut size={15} /> Sign out
+            </button>
+          </div>
+        </aside>
+        <main className="admin-main">
+          <header className="admin-topbar">
+            <div className="admin-breadcrumb">
+              <Link href="/">Store</Link>
+              <ChevronRight size={14} />
+              <b>{navItems.find(item => item.id === tab)?.label}</b>
+            </div>
+            <div className="admin-top-actions">
+              <button
+                type="button"
+                className="header-lock-btn"
+                onClick={() => triggerAdminLock()}
+                title="অ্যাডমিন স্ক্রিন লক করুন"
+              >
+                <Lock size={13} /> স্ক্রিন লক
+              </button>
+              <Link href="/" className="view-store"><ExternalLink size={15} /> View storefront</Link>
+              <span className="secure-tag"><ShieldCheck size={13} /> SECURE SESSION</span>
+            </div>
+          </header>
+          <div className="admin-content">
+            {tab === "overview" && <Overview onSelect={setTab} />}
+            {tab === "services" && <ServicesSection />}
+            {tab === "vault" && <VaultSection />}
+            {tab === "orders" && <OrdersSection />}
+            {tab === "connection" && <ConnectionSection />}
+            {tab === "history" && <HistorySection />}
+            {tab === "settings" && <SettingsSection />}
+          </div>
+        </main>
+      </div>
+    </AdminLockScreen>
+  );
 }
 
 function OrderBadge() {
@@ -2460,7 +2521,10 @@ function doPost(e) {
   }
 }`;
 
+type SettingsSubTab = "general" | "payment" | "email" | "security";
+
 function SettingsSection() {
+  const [settingsSubTab, setSettingsSubTab] = useState<SettingsSubTab>("general");
   const utils = trpc.useUtils();
   const { data, isLoading } = trpc.shop.admin.settings.get.useQuery();
   const emailConfig = trpc.shop.admin.email.status.useQuery();
@@ -2505,248 +2569,418 @@ function SettingsSection() {
   const emailDomain = form.resendFromEmail.trim().split("@").pop()?.toLowerCase();
   const senderVerified = Boolean(emailDomain && emailConfig.data?.domains.some(domain => (domain.name.toLowerCase() === emailDomain || emailDomain.endsWith(`.${domain.name.toLowerCase()}`)) && domain.status === "verified" && domain.sendingEnabled));
   const submit = (event: FormEvent) => { event.preventDefault(); save.mutate(form); };
-  return <><div className="admin-heading"><div><div className="eyebrow">STORE CONFIGURATION</div><h1>Store settings</h1><p>Retail price currency, customer payment instructions এবং support contact সেট করুন।</p></div></div>
-    {isLoading ? <PanelLoading /> : <form className="settings-form" onSubmit={submit}>
-      <section className="admin-panel settings-panel"><div className="panel-top"><div><h2>Price & supplier conversion</h2><p>Store currency-এর সঙ্গে supplier cost মেলালে product-এর saved markup ratio অনুযায়ী retail price auto-adjust হবে।</p></div><CircleDollarSign size={19} /></div><label className="field short-field">Store currency<select value={form.currency} onChange={e => setForm({ ...form, currency: e.target.value as typeof form.currency })}><option value="BDT">BDT — Bangladeshi Taka</option><option value="USD">USD — US Dollar</option><option value="INR">INR — Indian Rupee</option></select></label><p className="form-help">১ source currency = store currency-তে কত। Zero মানে rate অজানা: auto-reprice বন্ধ, product price review প্রয়োজন। INR store-এ CouponShops-এর verified provider INR/USDT rate ব্যবহার হয়।</p><div className="settings-grid conversion-grid"><label className="field">১ INR = {form.currency}<input type="number" min="0" step="0.0001" value={form.inrToStoreRate} onChange={event => setForm({ ...form, inrToStoreRate: Number(event.target.value) })} /></label><label className="field">১ USDT = {form.currency}<input type="number" min="0" step="0.0001" value={form.usdtToStoreRate} onChange={event => setForm({ ...form, usdtToStoreRate: Number(event.target.value) })} /></label><label className="field">১ AccZone unit = {form.currency}<input type="number" min="0" step="0.0001" value={form.acczoneUnitToStoreRate} onChange={event => setForm({ ...form, acczoneUnitToStoreRate: Number(event.target.value) })} /></label></div><div className="notice"><AlertTriangle size={15} /><span>Supplier cost পরিবর্তন হলে saved markup ratio অনুযায়ী দাম স্বয়ংক্রিয়ভাবে বাড়বে এবং কমবে; তবে দাম কখনোই আপনার ম্যানুয়ালি সেট করা বেস প্রাইজের নিচে নামবে না। Supplier/retail currency তুলনা করা না গেলে listing checkout-এর জন্য hold হবে—এখানে rate বসান বা product-এর retail price review করে save করুন।</span></div></section>
-      <section className="admin-panel settings-panel"><div className="panel-top"><div><h2>Manual payment</h2><p>Customer checkout ও payment confirmation-এর জন্য account details।</p></div><Banknote size={19} /></div><div className="settings-grid"><label className="field">bKash account<input maxLength={64} value={form.bkashNumber} onChange={e => setForm({ ...form, bkashNumber: e.target.value })} placeholder="Merchant/personal number দিন" /></label><label className="field">Nagad account<input maxLength={64} value={form.nagadNumber} onChange={e => setForm({ ...form, nagadNumber: e.target.value })} placeholder="Account number দিন" /></label><label className="field full-field">Bank transfer details<textarea rows={3} maxLength={2000} value={form.bankDetails} onChange={e => setForm({ ...form, bankDetails: e.target.value })} placeholder="Bank, account name, account number, branch লিখুন" /></label><label className="field full-field">Customer payment instruction<textarea rows={3} maxLength={2000} value={form.paymentInstructions} onChange={e => setForm({ ...form, paymentInstructions: e.target.value })} placeholder="যেমন: Send Money/transfer করে order code-সহ transaction ID দিন." /></label><label className="field full-field">Customer support contact<input maxLength={160} value={form.supportContact} onChange={e => setForm({ ...form, supportContact: e.target.value })} placeholder="Email, phone বা support handle" /></label></div><div className="notice warning"><ShieldCheck size={15} /><span>কোনো ভুয়া payment number prefill করা নেই। Account field ফাঁকা থাকলে customer ঐ পদ্ধতিতে order দিতে পারবে না।</span></div></section>
 
-      {/* Gmail Direct Mailer Configuration */}
-      <section className="admin-panel settings-panel">
-        <div className="panel-top">
-          <div>
-            <h2>Gmail Direct Mailer (ডোমেইন ছাড়া সরাসরি জিমেইল থেকে ইমেইল পাঠান)</h2>
-            <p>আপনার ব্যক্তিগত বা বিজনেস Gmail দিয়ে গ্রাহকের কাছে অর্ডার কনফার্মেশন ও ডেলিভারি লিঙ্ক পাঠান।</p>
-          </div>
-          <Mail size={19} />
-        </div>
+  return <>
+    <div className="admin-heading">
+      <div>
+        <div className="eyebrow">STORE CONFIGURATION <span className="heading-line" /></div>
+        <h1>Store settings</h1>
+        <p>Retail price currency, customer payment instructions, email delivery এবং security controls সেট করুন।</p>
+      </div>
+    </div>
 
-        <div className="email-provider-state" style={{ marginBottom: "14px", display: "flex", alignItems: "center", flexWrap: "wrap", gap: "10px" }}>
-          <span className={`status-chip ${emailConfig.data?.gmail?.configured ? "status-fulfilled" : "status-awaiting_payment"}`}>
-            <i />{emailConfig.isLoading ? "Checking…" : emailConfig.data?.gmail?.configured ? "GMAIL ACTIVE & CONNECTED" : "GMAIL NOT CONFIGURED"}
-          </span>
-          {emailConfig.data?.gmail?.configured && (
-            <span style={{ fontSize: "12px", color: "var(--mint-deep, #08785f)", fontWeight: 650 }}>
-              সংযুক্ত Gmail: {emailConfig.data.gmail.rawUser || emailConfig.data.gmail.user} {emailConfig.data.gmail.mode === "webhook" ? "(via Apps Script Webhook - Port 443 HTTPS)" : "(via Direct SMTP)"}
-            </span>
-          )}
-        </div>
+    {/* 4 Clean Sub-Tabs */}
+    <div className="settings-subtabs">
+      <button
+        type="button"
+        className={`subtab-btn ${settingsSubTab === "general" ? "active" : ""}`}
+        onClick={() => setSettingsSubTab("general")}
+      >
+        <CircleDollarSign size={16} />
+        <span>সাধারণ ও কারেন্সি (General & Rates)</span>
+      </button>
+      <button
+        type="button"
+        className={`subtab-btn ${settingsSubTab === "payment" ? "active" : ""}`}
+        onClick={() => setSettingsSubTab("payment")}
+      >
+        <Banknote size={16} />
+        <span>পেমেন্ট পদ্ধতি (Payment Methods)</span>
+      </button>
+      <button
+        type="button"
+        className={`subtab-btn ${settingsSubTab === "email" ? "active" : ""}`}
+        onClick={() => setSettingsSubTab("email")}
+      >
+        <Mail size={16} />
+        <span>ইমেইল ডেলিভারি (Gmail & Resend)</span>
+      </button>
+      <button
+        type="button"
+        className={`subtab-btn ${settingsSubTab === "security" ? "active" : ""}`}
+        onClick={() => setSettingsSubTab("security")}
+      >
+        <ShieldCheck size={16} />
+        <span>নিরাপত্তা ও অ্যাডমিন (Security & Admins)</span>
+      </button>
+    </div>
 
-        <div className="filter-pills" style={{ marginBottom: "14px" }}>
-          <button
-            type="button"
-            className={`filter-pill ${gmailMode === "webhook" ? "active" : ""}`}
-            onClick={() => setGmailMode("webhook")}
-          >
-            ⚡ পদ্ধতি ১: Google Apps Script Webhook (Render Free-এর জন্য সুপারিশকৃত)
-          </button>
-          <button
-            type="button"
-            className={`filter-pill ${gmailMode === "smtp" ? "active" : ""}`}
-            onClick={() => setGmailMode("smtp")}
-          >
-            🔑 পদ্ধতি ২: Google App Password (SMTP)
-          </button>
-        </div>
-
-        {gmailMode === "webhook" ? (
-          <div>
-            <div className="settings-grid">
-              <label className="field">
-                আপনার Gmail ঠিকানা
-                <input
-                  type="email"
-                  value={gmailUser}
-                  onChange={e => setGmailUser(e.target.value)}
-                  placeholder="yourshop@gmail.com"
-                />
-              </label>
-
-              <label className="field">
-                Google Apps Script Web App URL
-                <input
-                  type="url"
-                  value={gmailWebhookUrl}
-                  onChange={e => setGmailWebhookUrl(e.target.value)}
-                  placeholder="https://script.google.com/macros/s/.../exec"
-                />
-              </label>
-
-              <label className="field full-field">
-                প্রেরক প্রদর্শিত নাম (Store / Sender Name)
-                <input
-                  type="text"
-                  value={gmailFromName}
-                  onChange={e => setGmailFromName(e.target.value)}
-                  placeholder="AccZone Shop"
-                />
-              </label>
-            </div>
-
-            <div style={{ display: "flex", gap: "10px", marginTop: "14px", flexWrap: "wrap", alignItems: "center" }}>
-              <button
-                type="button"
-                className="button button-primary"
-                onClick={() => configureGmail.mutate({ gmailUser, webhookUrl: gmailWebhookUrl, fromName: gmailFromName })}
-                disabled={!gmailUser.trim() || !gmailWebhookUrl.trim() || configureGmail.isPending}
-              >
-                {configureGmail.isPending ? <LoaderCircle className="spin" size={14} /> : <ShieldCheck size={14} />}
-                Webhook সংরক্ষণ ও টেস্ট করুন
-              </button>
-              <button
-                type="button"
-                className="button button-light"
-                onClick={() => {
-                  navigator.clipboard.writeText(APPS_SCRIPT_CODE);
-                  setCopiedCode(true);
-                  setTimeout(() => setCopiedCode(false), 2000);
-                }}
-              >
-                {copiedCode ? <Check size={14} /> : <FileText size={14} />}
-                {copiedCode ? "কোড কপি হয়েছে!" : "Apps Script কোড কপি করুন"}
-              </button>
-              <button
-                type="button"
-                className="button button-light"
-                onClick={() => setShowWebhookGuide(!showWebhookGuide)}
-              >
-                {showWebhookGuide ? "সহায়তা লুকান" : "১ মিনিটের সেটআপ গাইড"}
-              </button>
-            </div>
-
-            {showWebhookGuide && (
-              <div className="notice" style={{ marginTop: "14px", background: "#f8faf9", border: "1px solid #dce8e1", color: "#223d34", padding: "14px", borderRadius: "8px", fontSize: "12px", lineHeight: "1.7" }}>
-                <strong>Google Apps Script Webhook সেটআপ করার সহজ ৩টি ধাপ:</strong>
-                <ol style={{ margin: "6px 0 0 16px", padding: 0 }}>
-                  <li><a href="https://script.google.com" target="_blank" rel="noreferrer" style={{ color: "#08785f", textDecoration: "underline", fontWeight: 600 }}>script.google.com</a>-এ যান, <strong>'New project'</strong> খুলুন এবং ওপরের <strong>'Apps Script কোড কপি করুন'</strong> বাটনে ক্লিক করে পাওয়া কোডটুকু পেস্ট করুন।</li>
-                  <li>উপরে <strong>Deploy &gt; New deployment</strong> চাপুন। গিয়ার আইকন থেকে <strong>Web app</strong> সিলেক্ট করে Execute as: <strong>Me</strong> এবং Who has access: <strong>Anyone</strong> দিয়ে Deploy করুন।</li>
-                  <li>দেওয়া <strong>Web app URL</strong> (যা <code>/exec</code> দিয়ে শেষ হয়) কপি করে ওপরের বক্সে পেস্ট করে <strong>"Webhook সংরক্ষণ ও টেস্ট করুন"</strong> দিন!</li>
-                </ol>
+    {isLoading ? <PanelLoading /> : (
+      <>
+        {settingsSubTab === "general" && (
+          <form className="settings-form" onSubmit={submit}>
+            <section className="admin-panel settings-panel">
+              <div className="panel-top">
+                <div>
+                  <h2>Price & supplier conversion (কারেন্সি রূপান্তর)</h2>
+                  <p>Store currency-এর সঙ্গে supplier cost মেলালে product-এর saved markup ratio অনুযায়ী retail price auto-adjust হবে।</p>
+                </div>
+                <CircleDollarSign size={19} />
               </div>
-            )}
-          </div>
-        ) : (
-          <div>
-            <div className="settings-grid">
-              <label className="field">
-                আপনার Gmail ঠিকানা
-                <input
-                  type="email"
-                  value={gmailUser}
-                  onChange={e => setGmailUser(e.target.value)}
-                  placeholder="yourshop@gmail.com"
-                />
+              <label className="field short-field">
+                Store currency
+                <select value={form.currency} onChange={e => setForm({ ...form, currency: e.target.value as typeof form.currency })}>
+                  <option value="BDT">BDT — Bangladeshi Taka</option>
+                  <option value="USD">USD — US Dollar</option>
+                  <option value="INR">INR — Indian Rupee</option>
+                </select>
               </label>
-
-              <label className="field">
-                Google App Password (১৬ অক্ষর)
-                <input
-                  type="password"
-                  value={gmailAppPass}
-                  onChange={e => setGmailAppPass(e.target.value)}
-                  placeholder="abcd efgh ijkl mnop"
-                />
-              </label>
-
-              <label className="field full-field">
-                প্রেরক প্রদর্শিত নাম (Store / Sender Name)
-                <input
-                  type="text"
-                  value={gmailFromName}
-                  onChange={e => setGmailFromName(e.target.value)}
-                  placeholder="AccZone Shop"
-                />
-              </label>
-            </div>
-
-            <div style={{ display: "flex", gap: "10px", marginTop: "14px", flexWrap: "wrap", alignItems: "center" }}>
-              <button
-                type="button"
-                className="button button-primary"
-                onClick={() => configureGmail.mutate({ gmailUser, appPassword: gmailAppPass, fromName: gmailFromName })}
-                disabled={!gmailUser.trim() || !gmailAppPass.trim() || configureGmail.isPending}
-              >
-                {configureGmail.isPending ? <LoaderCircle className="spin" size={14} /> : <ShieldCheck size={14} />}
-                Gmail সংরক্ষণ ও টেস্ট করুন
-              </button>
-              <button
-                type="button"
-                className="button button-light"
-                onClick={() => setShowGmailHelp(!showGmailHelp)}
-              >
-                {showGmailHelp ? "সহায়তা লুকান" : "কীভাবে App Password পাবেন?"}
-              </button>
-            </div>
-
-            {showGmailHelp && (
-              <div className="notice" style={{ marginTop: "14px", background: "#f8faf9", border: "1px solid #dce8e1", color: "#223d34", padding: "14px", borderRadius: "8px", fontSize: "12px", lineHeight: "1.7" }}>
-                <strong>Google App Password পাওয়ার সহজ ৩টি ধাপ:</strong>
-                <ol style={{ margin: "6px 0 0 16px", padding: 0 }}>
-                  <li><a href="https://myaccount.google.com/security" target="_blank" rel="noreferrer" style={{ color: "#08785f", textDecoration: "underline", fontWeight: 600 }}>Google Security</a>-তে গিয়ে 2-Step Verification চালু করুন।</li>
-                  <li>Security পেজে <strong>'App passwords'</strong> সার্চ করুন এবং অ্যাপ নাম <code>AccShop</code> দিয়ে Create চাপুন।</li>
-                  <li>পাওয়া ১৬ অক্ষরের কোডটি কপি করে ওপরের বক্সে পেস্ট করে সেভ করুন।</li>
-                </ol>
+              <p className="form-help">১ source currency = store currency-তে কত। Zero মানে rate অজানা: auto-reprice বন্ধ, product price review প্রয়োজন। INR store-এ CouponShops-এর verified provider INR/USDT rate ব্যবহার হয়।</p>
+              <div className="settings-grid conversion-grid">
+                <label className="field">১ INR = {form.currency}<input type="number" min="0" step="0.0001" value={form.inrToStoreRate} onChange={event => setForm({ ...form, inrToStoreRate: Number(event.target.value) })} /></label>
+                <label className="field">১ USDT = {form.currency}<input type="number" min="0" step="0.0001" value={form.usdtToStoreRate} onChange={event => setForm({ ...form, usdtToStoreRate: Number(event.target.value) })} /></label>
+                <label className="field">১ AccZone unit = {form.currency}<input type="number" min="0" step="0.0001" value={form.acczoneUnitToStoreRate} onChange={event => setForm({ ...form, acczoneUnitToStoreRate: Number(event.target.value) })} /></label>
               </div>
-            )}
-          </div>
+              <div className="notice"><AlertTriangle size={15} /><span>Supplier cost পরিবর্তন হলে saved markup ratio অনুযায়ী দাম স্বয়ংক্রিয়ভাবে বাড়বে এবং কমবে; তবে দাম কখনোই আপনার ম্যানুয়ালি সেট করা বেস প্রাইজের নিচে নামবে না। Supplier/retail currency তুলনা করা না গেলে listing checkout-এর জন্য hold হবে—এখানে rate বসান বা product-এর retail price review করে save করুন।</span></div>
+            </section>
+
+            <section className="admin-panel settings-panel">
+              <div className="panel-top">
+                <div>
+                  <h2>Public storefront URL</h2>
+                  <p>আপনার শপের মূল লাইভ ওয়েব ঠিকানা (Domain / Public HTTPS URL)।</p>
+                </div>
+                <Globe size={19} />
+              </div>
+              <div className="settings-grid">
+                <label className="field full-field">
+                  Public storefront URL
+                  <input type="url" required value={form.publicSiteUrl} onChange={event => setForm({ ...form, publicSiteUrl: event.target.value })} placeholder="https://your-shop.example" />
+                  <small>Magic-link ও activation destination; HTTPS URL দিন।</small>
+                </label>
+              </div>
+            </section>
+
+            <div className="settings-save-row">
+              <span>{data?.updatedAt ? `Last updated ${dateText(data.updatedAt)}` : "Manual payment setup unfinished"}</span>
+              <button className="button button-primary" type="submit" disabled={save.isPending}>
+                {save.isPending ? <LoaderCircle className="spin" size={14} /> : <Save size={14} />} Save general settings
+              </button>
+            </div>
+          </form>
         )}
 
-        {emailConfig.data?.gmail?.configured && (
-          <div style={{ marginTop: "20px", padding: "16px 18px", borderRadius: "10px", background: "#f0fdf4", border: "1px solid #bbf7d0" }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "8px", marginBottom: "8px" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                <Mail size={18} style={{ color: "#16a34a" }} />
-                <strong style={{ color: "#15803d", fontSize: "14px" }}>লাইভ ইমেইল টেস্ট (Live Email Test)</strong>
+        {settingsSubTab === "payment" && (
+          <form className="settings-form" onSubmit={submit}>
+            <section className="admin-panel settings-panel">
+              <div className="panel-top">
+                <div>
+                  <h2>Manual payment (ম্যানুয়াল পেমেন্ট মেথড)</h2>
+                  <p>Customer checkout ও payment confirmation-এর জন্য account details।</p>
+                </div>
+                <Banknote size={19} />
               </div>
-              <span style={{ fontSize: "12px", color: "#16a34a", background: "#dcfce7", padding: "3px 8px", borderRadius: "6px", fontWeight: 600 }}>
-                {emailConfig.data.gmail.mode === "webhook" ? "Webhook ডেলিভারি সক্রিয়" : "SMTP ডেলিভারি সক্রিয়"}
-              </span>
-            </div>
-            <p style={{ margin: "0 0 14px 0", fontSize: "13px", color: "#374151", lineHeight: "1.5" }}>
-              আপনার সংযুক্ত Gmail দিয়ে সরাসরি একটি টেস্ট ইমেইল পাঠিয়ে যাচাই করুন যে অর্ডার কনফার্মেশন ও ডিজিটাল ডেলিভারি শতভাগ সচল রয়েছে।
-            </p>
+              <div className="settings-grid">
+                <label className="field">bKash account<input maxLength={64} value={form.bkashNumber} onChange={e => setForm({ ...form, bkashNumber: e.target.value })} placeholder="Merchant/personal number দিন" /></label>
+                <label className="field">Nagad account<input maxLength={64} value={form.nagadNumber} onChange={e => setForm({ ...form, nagadNumber: e.target.value })} placeholder="Account number দিন" /></label>
+                <label className="field full-field">Bank transfer details<textarea rows={3} maxLength={2000} value={form.bankDetails} onChange={e => setForm({ ...form, bankDetails: e.target.value })} placeholder="Bank, account name, account number, branch লিখুন" /></label>
+                <label className="field full-field">Customer payment instruction<textarea rows={3} maxLength={2000} value={form.paymentInstructions} onChange={e => setForm({ ...form, paymentInstructions: e.target.value })} placeholder="যেমন: Send Money/transfer করে order code-সহ transaction ID দিন." /></label>
+                <label className="field full-field">Customer support contact<input maxLength={160} value={form.supportContact} onChange={e => setForm({ ...form, supportContact: e.target.value })} placeholder="Email, phone বা support handle" /></label>
+              </div>
+              <div className="notice warning"><ShieldCheck size={15} /><span>কোনো ভুয়া payment number prefill করা নেই। Account field ফাঁকা থাকলে customer ঐ পদ্ধতিতে order দিতে পারবে না।</span></div>
+            </section>
 
-            <div style={{ display: "flex", flexWrap: "wrap", gap: "10px", alignItems: "center" }}>
-              {emailConfig.data.gmail.rawUser && (
+            <div className="settings-save-row">
+              <span>{data?.updatedAt ? `Last updated ${dateText(data.updatedAt)}` : "Payment details unchanged"}</span>
+              <button className="button button-primary" type="submit" disabled={save.isPending}>
+                {save.isPending ? <LoaderCircle className="spin" size={14} /> : <Save size={14} />} Save payment settings
+              </button>
+            </div>
+          </form>
+        )}
+
+        {settingsSubTab === "email" && (
+          <div className="settings-form">
+            {/* Gmail Direct Mailer Configuration */}
+            <section className="admin-panel settings-panel">
+              <div className="panel-top">
+                <div>
+                  <h2>Gmail Direct Mailer (ডোমেইন ছাড়া সরাসরি জিমেইল থেকে ইমেইল পাঠান)</h2>
+                  <p>আপনার ব্যক্তিগত বা বিজনেস Gmail দিয়ে গ্রাহকের কাছে অর্ডার কনফার্মেশন ও ডেলিভারি লিঙ্ক পাঠান।</p>
+                </div>
+                <Mail size={19} />
+              </div>
+
+              <div className="email-provider-state" style={{ marginBottom: "14px", display: "flex", alignItems: "center", flexWrap: "wrap", gap: "10px" }}>
+                <span className={`status-chip ${emailConfig.data?.gmail?.configured ? "status-fulfilled" : "status-awaiting_payment"}`}>
+                  <i />{emailConfig.isLoading ? "Checking…" : emailConfig.data?.gmail?.configured ? "GMAIL ACTIVE & CONNECTED" : "GMAIL NOT CONFIGURED"}
+                </span>
+                {emailConfig.data?.gmail?.configured && (
+                  <span style={{ fontSize: "12px", color: "var(--mint-deep, #08785f)", fontWeight: 650 }}>
+                    সংযুক্ত Gmail: {emailConfig.data.gmail.rawUser || emailConfig.data.gmail.user} {emailConfig.data.gmail.mode === "webhook" ? "(via Apps Script Webhook - Port 443 HTTPS)" : "(via Direct SMTP)"}
+                  </span>
+                )}
+              </div>
+
+              <div className="filter-pills" style={{ marginBottom: "14px" }}>
                 <button
                   type="button"
-                  className="button button-primary"
-                  style={{ background: "#15803d", borderColor: "#15803d" }}
-                  onClick={() => sendTestEmail.mutate({ targetEmail: emailConfig.data!.gmail!.rawUser! })}
-                  disabled={sendTestEmail.isPending}
+                  className={`filter-pill ${gmailMode === "webhook" ? "active" : ""}`}
+                  onClick={() => setGmailMode("webhook")}
                 >
-                  {sendTestEmail.isPending ? <LoaderCircle className="spin" size={14} /> : <Mail size={14} />}
-                  আমার জিমেইলে ১-ক্লিক টেস্ট পাঠান ({emailConfig.data.gmail.rawUser})
+                  ⚡ পদ্ধতি ১: Google Apps Script Webhook (Render Free-এর জন্য সুপারিশকৃত)
                 </button>
+                <button
+                  type="button"
+                  className={`filter-pill ${gmailMode === "smtp" ? "active" : ""}`}
+                  onClick={() => setGmailMode("smtp")}
+                >
+                  🔑 পদ্ধতি ২: Google App Password (SMTP)
+                </button>
+              </div>
+
+              {gmailMode === "webhook" ? (
+                <div>
+                  <div className="settings-grid">
+                    <label className="field">
+                      আপনার Gmail ঠিকানা
+                      <input
+                        type="email"
+                        value={gmailUser}
+                        onChange={e => setGmailUser(e.target.value)}
+                        placeholder="yourshop@gmail.com"
+                      />
+                    </label>
+
+                    <label className="field">
+                      Google Apps Script Web App URL
+                      <input
+                        type="url"
+                        value={gmailWebhookUrl}
+                        onChange={e => setGmailWebhookUrl(e.target.value)}
+                        placeholder="https://script.google.com/macros/s/.../exec"
+                      />
+                    </label>
+
+                    <label className="field full-field">
+                      প্রেরক প্রদর্শিত নাম (Store / Sender Name)
+                      <input
+                        type="text"
+                        value={gmailFromName}
+                        onChange={e => setGmailFromName(e.target.value)}
+                        placeholder="AccZone Shop"
+                      />
+                    </label>
+                  </div>
+
+                  <div style={{ display: "flex", gap: "10px", marginTop: "14px", flexWrap: "wrap", alignItems: "center" }}>
+                    <button
+                      type="button"
+                      className="button button-primary"
+                      onClick={() => configureGmail.mutate({ gmailUser, webhookUrl: gmailWebhookUrl, fromName: gmailFromName })}
+                      disabled={!gmailUser.trim() || !gmailWebhookUrl.trim() || configureGmail.isPending}
+                    >
+                      {configureGmail.isPending ? <LoaderCircle className="spin" size={14} /> : <ShieldCheck size={14} />}
+                      Webhook সংরক্ষণ ও টেস্ট করুন
+                    </button>
+                    <button
+                      type="button"
+                      className="button button-light"
+                      onClick={() => {
+                        navigator.clipboard.writeText(APPS_SCRIPT_CODE);
+                        setCopiedCode(true);
+                        setTimeout(() => setCopiedCode(false), 2000);
+                      }}
+                    >
+                      {copiedCode ? <Check size={14} /> : <FileText size={14} />}
+                      {copiedCode ? "কোড কপি হয়েছে!" : "Apps Script কোড কপি করুন"}
+                    </button>
+                    <button
+                      type="button"
+                      className="button button-light"
+                      onClick={() => setShowWebhookGuide(!showWebhookGuide)}
+                    >
+                      {showWebhookGuide ? "সহায়তা লুকান" : "১ মিনিটের সেটআপ গাইড"}
+                    </button>
+                  </div>
+
+                  {showWebhookGuide && (
+                    <div className="notice" style={{ marginTop: "14px", background: "#f8faf9", border: "1px solid #dce8e1", color: "#223d34", padding: "14px", borderRadius: "8px", fontSize: "12px", lineHeight: "1.7" }}>
+                      <strong>Google Apps Script Webhook সেটআপ করার সহজ ৩টি ধাপ:</strong>
+                      <ol style={{ margin: "6px 0 0 16px", padding: 0 }}>
+                        <li><a href="https://script.google.com" target="_blank" rel="noreferrer" style={{ color: "#08785f", textDecoration: "underline", fontWeight: 600 }}>script.google.com</a>-এ যান, <strong>'New project'</strong> খুলুন এবং ওপরের <strong>'Apps Script কোড কপি করুন'</strong> বাটনে ক্লিক করে পাওয়া কোডটুকু পেস্ট করুন।</li>
+                        <li>উপরে <strong>Deploy &gt; New deployment</strong> চাপুন। গিয়ার আইকন থেকে <strong>Web app</strong> সিলেক্ট করে Execute as: <strong>Me</strong> এবং Who has access: <strong>Anyone</strong> দিয়ে Deploy করুন।</li>
+                        <li>দেওয়া <strong>Web app URL</strong> (যা <code>/exec</code> দিয়ে শেষ হয়) কপি করে ওপরের বক্সে পেস্ট করে <strong>"Webhook সংরক্ষণ ও টেস্ট করুন"</strong> দিন!</li>
+                      </ol>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div>
+                  <div className="settings-grid">
+                    <label className="field">
+                      আপনার Gmail ঠিকানা
+                      <input
+                        type="email"
+                        value={gmailUser}
+                        onChange={e => setGmailUser(e.target.value)}
+                        placeholder="yourshop@gmail.com"
+                      />
+                    </label>
+
+                    <label className="field">
+                      Google App Password (১৬ অক্ষর)
+                      <input
+                        type="password"
+                        value={gmailAppPass}
+                        onChange={e => setGmailAppPass(e.target.value)}
+                        placeholder="abcd efgh ijkl mnop"
+                      />
+                    </label>
+
+                    <label className="field full-field">
+                      প্রেরক প্রদর্শিত নাম (Store / Sender Name)
+                      <input
+                        type="text"
+                        value={gmailFromName}
+                        onChange={e => setGmailFromName(e.target.value)}
+                        placeholder="AccZone Shop"
+                      />
+                    </label>
+                  </div>
+
+                  <div style={{ display: "flex", gap: "10px", marginTop: "14px", flexWrap: "wrap", alignItems: "center" }}>
+                    <button
+                      type="button"
+                      className="button button-primary"
+                      onClick={() => configureGmail.mutate({ gmailUser, appPassword: gmailAppPass, fromName: gmailFromName })}
+                      disabled={!gmailUser.trim() || !gmailAppPass.trim() || configureGmail.isPending}
+                    >
+                      {configureGmail.isPending ? <LoaderCircle className="spin" size={14} /> : <ShieldCheck size={14} />}
+                      Gmail সংরক্ষণ ও টেস্ট করুন
+                    </button>
+                    <button
+                      type="button"
+                      className="button button-light"
+                      onClick={() => setShowGmailHelp(!showGmailHelp)}
+                    >
+                      {showGmailHelp ? "সহায়তা লুকান" : "কীভাবে App Password পাবেন?"}
+                    </button>
+                  </div>
+
+                  {showGmailHelp && (
+                    <div className="notice" style={{ marginTop: "14px", background: "#f8faf9", border: "1px solid #dce8e1", color: "#223d34", padding: "14px", borderRadius: "8px", fontSize: "12px", lineHeight: "1.7" }}>
+                      <strong>Google App Password পাওয়ার সহজ ৩টি ধাপ:</strong>
+                      <ol style={{ margin: "6px 0 0 16px", padding: 0 }}>
+                        <li><a href="https://myaccount.google.com/security" target="_blank" rel="noreferrer" style={{ color: "#08785f", textDecoration: "underline", fontWeight: 600 }}>Google Security</a>-তে গিয়ে 2-Step Verification চালু করুন।</li>
+                        <li>Security পেজে <strong>'App passwords'</strong> সার্চ করুন এবং অ্যাপ নাম <code>AccShop</code> দিয়ে Create চাপুন।</li>
+                        <li>পাওয়া ১৬ অক্ষরের কোডটি কপি করে ওপরের বক্সে পেস্ট করে সেভ করুন।</li>
+                      </ol>
+                    </div>
+                  )}
+                </div>
               )}
 
-              <div style={{ display: "flex", gap: "8px", flex: "1 1 280px", minWidth: "260px" }}>
-                <input
-                  type="email"
-                  value={testEmailTarget}
-                  onChange={e => setTestEmailTarget(e.target.value)}
-                  placeholder="অন্য কোনো ইমেইল দিন..."
-                  style={{ flex: 1, padding: "8px 12px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px" }}
-                />
-                <button
-                  type="button"
-                  className="button button-secondary"
-                  onClick={() => sendTestEmail.mutate({ targetEmail: testEmailTarget })}
-                  disabled={!testEmailTarget.trim() || sendTestEmail.isPending}
-                >
-                  {sendTestEmail.isPending ? <LoaderCircle className="spin" size={14} /> : <Mail size={14} />}
-                  পাঠান
-                </button>
+              {emailConfig.data?.gmail?.configured && (
+                <div style={{ marginTop: "20px", padding: "16px 18px", borderRadius: "10px", background: "#f0fdf4", border: "1px solid #bbf7d0" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "8px", marginBottom: "8px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                      <Mail size={18} style={{ color: "#16a34a" }} />
+                      <strong style={{ color: "#15803d", fontSize: "14px" }}>লাইভ ইমেইল টেস্ট (Live Email Test)</strong>
+                    </div>
+                    <span style={{ fontSize: "12px", color: "#16a34a", background: "#dcfce7", padding: "3px 8px", borderRadius: "6px", fontWeight: 600 }}>
+                      {emailConfig.data.gmail.mode === "webhook" ? "Webhook ডেলিভারি সক্রিয়" : "SMTP ডেলিভারি সক্রিয়"}
+                    </span>
+                  </div>
+                  <p style={{ margin: "0 0 14px 0", fontSize: "13px", color: "#374151", lineHeight: "1.5" }}>
+                    আপনার সংযুক্ত Gmail দিয়ে সরাসরি একটি টেস্ট ইমেইল পাঠিয়ে যাচাই করুন যে অর্ডার কনফার্মেশন ও ডিজিটাল ডেলিভারি শতভাগ সচল রয়েছে।
+                  </p>
+
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: "10px", alignItems: "center" }}>
+                    {emailConfig.data.gmail.rawUser && (
+                      <button
+                        type="button"
+                        className="button button-primary"
+                        style={{ background: "#15803d", borderColor: "#15803d" }}
+                        onClick={() => sendTestEmail.mutate({ targetEmail: emailConfig.data!.gmail!.rawUser! })}
+                        disabled={sendTestEmail.isPending}
+                      >
+                        {sendTestEmail.isPending ? <LoaderCircle className="spin" size={14} /> : <Mail size={14} />}
+                        আমার জিমেইলে ১-ক্লিক টেস্ট পাঠান ({emailConfig.data.gmail.rawUser})
+                      </button>
+                    )}
+
+                    <div style={{ display: "flex", gap: "8px", flex: "1 1 280px", minWidth: "260px" }}>
+                      <input
+                        type="email"
+                        value={testEmailTarget}
+                        onChange={e => setTestEmailTarget(e.target.value)}
+                        placeholder="অন্য কোনো ইমেইল দিন..."
+                        style={{ flex: 1, padding: "8px 12px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px" }}
+                      />
+                      <button
+                        type="button"
+                        className="button button-secondary"
+                        onClick={() => sendTestEmail.mutate({ targetEmail: testEmailTarget })}
+                        disabled={!testEmailTarget.trim() || sendTestEmail.isPending}
+                      >
+                        {sendTestEmail.isPending ? <LoaderCircle className="spin" size={14} /> : <Mail size={14} />}
+                        পাঠান
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </section>
+
+            {/* Resend Optional Domain Email */}
+            <section className="admin-panel settings-panel">
+              <div className="panel-top">
+                <div>
+                  <h2>Domain transactional email (Optional / Resend)</h2>
+                  <p>কাস্টম ডোমেইনের নিজস্ব DNS/DKIM ভেরিফিকেশন থাকলে Resend API ব্যবহার করতে পারেন।</p>
+                </div>
+                <Mail size={19} />
               </div>
-            </div>
+              <div className="settings-grid">
+                <label className="field full-field">
+                  Public storefront URL
+                  <input type="url" required value={form.publicSiteUrl} onChange={event => setForm({ ...form, publicSiteUrl: event.target.value })} placeholder="https://your-shop.example" />
+                  <small>Magic-link ও activation destination; HTTPS URL দিন।</small>
+                </label>
+                <label className="field full-field">
+                  Verified Resend sender email
+                  <input type="email" maxLength={320} value={form.resendFromEmail} onChange={event => setForm({ ...form, resendFromEmail: event.target.value })} placeholder="orders@your-verified-domain.com" />
+                  <small>Resend-এ verify করা sender domain থেকে হতে হবে।</small>
+                </label>
+              </div>
+              <div className="email-provider-state">
+                <span className={`status-chip ${emailConfig.data?.resend?.configured ? "status-fulfilled" : "status-awaiting_payment"}`}>
+                  <i />{emailConfig.isLoading ? "Checking…" : emailConfig.data?.resend?.configured ? "RESEND KEY CONFIGURED" : "RESEND KEY NOT SET"}
+                </span>
+                <span className={`status-chip ${senderVerified ? "status-fulfilled" : "status-fulfillment_unknown"}`}>
+                  <i />{senderVerified ? "SENDER VERIFIED" : "SENDER NEEDS VERIFICATION"}
+                </span>
+                <p>{emailConfig.data?.domains.length ? `Verified domains: ${emailConfig.data.domains.filter(domain => domain.status === "verified" && domain.sendingEnabled).map(domain => domain.name).join(", ") || "none"}` : "Resend account-এ domain verify ও sending enable করুন."}</p>
+                <a className="text-link" href="https://resend.com/domains" target="_blank" rel="noreferrer">Resend domain settings <ExternalLink size={12} /></a>
+              </div>
+              <label className="field email-key-field">
+                Resend API key <span className="optional">key শুধু secure server request-এ যাবে, পরে দেখানো হবে না</span>
+                <input type="password" autoComplete="new-password" value={resendKey} onChange={event => setResendKey(event.target.value)} minLength={8} maxLength={2048} placeholder={emailConfig.data?.resend?.configured ? "Replace করতে নতুন Resend key লিখুন" : "re_…"} />
+              </label>
+              <button type="button" className="button button-secondary" onClick={() => configureEmail.mutate({ apiKey: resendKey })} disabled={!resendKey.trim() || configureEmail.isPending}>
+                {configureEmail.isPending ? <LoaderCircle className="spin" size={14} /> : <ShieldCheck size={14} />}
+                {emailConfig.data?.resend?.configured ? "Verify & replace Resend key" : "Verify & save Resend key"}
+              </button>
+            </section>
           </div>
         )}
-      </section>
 
-      {/* Resend Optional Domain Email */}
-      <section className="admin-panel settings-panel"><div className="panel-top"><div><h2>Domain transactional email (Optional / Resend)</h2><p>কাস্টম ডোমেইনের নিজস্ব DNS/DKIM ভেরিফিকেশন থাকলে Resend API ব্যবহার করতে পারেন।</p></div><Mail size={19} /></div><div className="settings-grid"><label className="field full-field">Public storefront URL<input type="url" required value={form.publicSiteUrl} onChange={event => setForm({ ...form, publicSiteUrl: event.target.value })} placeholder="https://your-shop.example" /><small>Magic-link ও activation destination; HTTPS URL দিন।</small></label><label className="field full-field">Verified Resend sender email<input type="email" maxLength={320} value={form.resendFromEmail} onChange={event => setForm({ ...form, resendFromEmail: event.target.value })} placeholder="orders@your-verified-domain.com" /><small>Resend-এ verify করা sender domain থেকে হতে হবে।</small></label></div><div className="email-provider-state"><span className={`status-chip ${emailConfig.data?.resend?.configured ? "status-fulfilled" : "status-awaiting_payment"}`}><i />{emailConfig.isLoading ? "Checking…" : emailConfig.data?.resend?.configured ? "RESEND KEY CONFIGURED" : "RESEND KEY NOT SET"}</span><span className={`status-chip ${senderVerified ? "status-fulfilled" : "status-fulfillment_unknown"}`}><i />{senderVerified ? "SENDER VERIFIED" : "SENDER NEEDS VERIFICATION"}</span><p>{emailConfig.data?.domains.length ? `Verified domains: ${emailConfig.data.domains.filter(domain => domain.status === "verified" && domain.sendingEnabled).map(domain => domain.name).join(", ") || "none"}` : "Resend account-এ domain verify ও sending enable করুন."}</p><a className="text-link" href="https://resend.com/domains" target="_blank" rel="noreferrer">Resend domain settings <ExternalLink size={12} /></a></div><label className="field email-key-field">Resend API key <span className="optional">key শুধু secure server request-এ যাবে, পরে দেখানো হবে না</span><input type="password" autoComplete="new-password" value={resendKey} onChange={event => setResendKey(event.target.value)} minLength={8} maxLength={2048} placeholder={emailConfig.data?.resend?.configured ? "Replace করতে নতুন Resend key লিখুন" : "re_…"} /></label><button type="button" className="button button-secondary" onClick={() => configureEmail.mutate({ apiKey: resendKey })} disabled={!resendKey.trim() || configureEmail.isPending}>{configureEmail.isPending ? <LoaderCircle className="spin" size={14} /> : <ShieldCheck size={14} />}{emailConfig.data?.resend?.configured ? "Verify & replace Resend key" : "Verify & save Resend key"}</button></section>
-      <div className="settings-save-row"><span>{data?.updatedAt ? `Last updated ${dateText(data.updatedAt)}` : "Manual payment setup unfinished"}</span><button className="button button-primary" type="submit" disabled={save.isPending}>{save.isPending ? <LoaderCircle className="spin" size={14} /> : <Save size={14} />} Save settings</button></div>
-    </form>}
-    <AdminSecuritySection />
+        {settingsSubTab === "security" && (
+          <AdminSecuritySection />
+        )}
+      </>
+    )}
   </>;
 }
 
@@ -2816,6 +3050,17 @@ function AdminSecuritySection() {
   const [addConfirmPassword, setAddConfirmPassword] = useState("");
   const [addRole, setAddRole] = useState<"admin" | "superadmin">("admin");
 
+  const [idleTimeout, setIdleTimeout] = useState<number>(() => {
+    const stored = localStorage.getItem("admin_idle_lock_timeout");
+    return stored !== null ? Number(stored) : 3;
+  });
+
+  const handleIdleTimeoutChange = (val: number) => {
+    setIdleTimeout(val);
+    localStorage.setItem("admin_idle_lock_timeout", String(val));
+    toast.success(val === 0 ? "অটো-লক নিষ্ক্রিয় করা হয়েছে" : `অটো-লক সময়সীমা ${val} মিনিটে সেট করা হয়েছে`);
+  };
+
   const handleRegisterPasskey = async () => {
     try {
       setRegisteringPasskey(true);
@@ -2883,8 +3128,48 @@ function AdminSecuritySection() {
 
   return (
     <>
+      {/* Quick Screen Lock & Auto-Lock Settings */}
+      <section className="admin-panel settings-panel">
+        <div className="panel-top">
+          <div>
+            <h2 className="flex items-center gap-2">
+              <Lock size={19} className="text-emerald-700" />
+              কুইক স্ক্রিন লক ও অটো-লক টাইমার (Quick Screen Lock & Auto-Lock)
+            </h2>
+            <p>
+              ব্রাউজার বন্ধ করে আবার ঢুকলে বা নির্দিষ্ট সময় নিষ্ক্রিয় (idle) থাকলে অ্যাডমিন প্যানেল স্বয়ংক্রিয়ভাবে লক হয়ে যাবে এবং বায়োমেট্রিক বা পাসওয়ার্ড চাইবে।
+            </p>
+          </div>
+          <button
+            type="button"
+            className="button button-secondary"
+            onClick={() => triggerAdminLock()}
+            style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}
+          >
+            <Lock size={14} /> এখনই স্ক্রিন লক করুন
+          </button>
+        </div>
+
+        <div className="settings-grid" style={{ marginTop: "12px" }}>
+          <label className="field">
+            অটো-লক সময়সীমা (Inactivity Idle Timeout)
+            <select
+              value={idleTimeout}
+              onChange={(e) => handleIdleTimeoutChange(Number(e.target.value))}
+            >
+              <option value="1">১ মিনিট নিষ্ক্রিয় থাকলে (উচ্চ নিরাপত্তা)</option>
+              <option value="3">৩ মিনিট নিষ্ক্রিয় থাকলে (সুপারিশকৃত)</option>
+              <option value="5">৫ মিনিট নিষ্ক্রিয় থাকলে</option>
+              <option value="10">১০ মিনিট নিষ্ক্রিয় থাকলে</option>
+              <option value="0">বন্ধ রাখুন (কখনো অটো-লক হবে না)</option>
+            </select>
+            <small>নির্ধারিত সময়ের মধ্যে মাউস বা কীবোর্ড অ্যাক্টিভিটি না পেলে স্ক্রিন স্বয়ংক্রিয়ভাবে লক হবে।</small>
+          </label>
+        </div>
+      </section>
+
       {/* Account Credentials */}
-      <section className="admin-panel settings-panel" style={{ marginTop: "24px" }}>
+      <section className="admin-panel settings-panel" style={{ marginTop: "20px" }}>
         <div className="panel-top">
           <div>
             <h2>Admin Account & Security (অ্যাডমিন নিরাপত্তা ও ক্রেডেনশিয়ালস)</h2>
