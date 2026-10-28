@@ -87,6 +87,7 @@ export async function createCustomProduct(input: {
       isActive: 1,
       isListed: 1,
       retailPrice: Number(input.retailPrice.toFixed(2)),
+      baseRetailPrice: Number(input.retailPrice.toFixed(2)),
       priceMarkupRatio: 0,
       priceReviewRequired: 0,
       warrantyText: input.warrantyText?.trim() || "ওয়ারেন্টি নেই",
@@ -245,7 +246,11 @@ export async function updateCustomProduct(input: {
 
   const updates: Record<string, any> = { updatedAt: new Date() };
   if (input.name !== undefined) updates.name = input.name.trim();
-  if (input.retailPrice !== undefined) updates.retailPrice = Number(input.retailPrice.toFixed(2));
+  if (input.retailPrice !== undefined) {
+    const p = Number(input.retailPrice.toFixed(2));
+    updates.retailPrice = p;
+    updates.baseRetailPrice = p;
+  }
   if (input.customDescription !== undefined) updates.customDescription = input.customDescription?.trim() || null;
   if (input.imageUrl !== undefined) updates.imageUrl = input.imageUrl?.trim() || "";
   if (input.warrantyText !== undefined) updates.warrantyText = input.warrantyText?.trim() || "ওয়ারেন্টি নেই";

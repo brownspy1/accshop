@@ -38,6 +38,7 @@ export const activationServices = pgTable("activation_services", {
   isActive: integer("isActive").notNull().default(0),
   isListed: integer("isListed").notNull().default(0),
   retailPrice: doublePrecision("retailPrice").notNull().default(0),
+  baseRetailPrice: doublePrecision("baseRetailPrice").notNull().default(0),
   priceMarkupRatio: doublePrecision("priceMarkupRatio").notNull().default(0),
   priceReviewRequired: integer("priceReviewRequired").notNull().default(0),
   warrantyText: varchar("warrantyText", { length: 128 }).default("ওয়ারেন্টি নেই"),

@@ -14,11 +14,19 @@ export type SupplierCost = {
 
 export type ExistingRetail = SupplierCost & {
   retailPrice: number;
+  baseRetailPrice?: number | null;
   priceMarkupRatio: number;
   priceReviewRequired: number;
 };
 
 export type IncomingSupplierCost = SupplierCost;
+
+export type RepriceResult = {
+  retailPrice: number;
+  baseRetailPrice: number;
+  priceMarkupRatio: number;
+  priceReviewRequired: number;
+};
 
 export function supplierCostInStoreCurrency(cost: SupplierCost, rates: PricingRates): number | null {
   if (!Number.isFinite(cost.price) || cost.price < 0) return null;
@@ -47,7 +55,7 @@ export function repriceAfterSupplierSync(
   previous: ExistingRetail,
   incoming: IncomingSupplierCost,
   rates: PricingRates,
-): { retailPrice: number; priceMarkupRatio: number; priceReviewRequired: number } {
+): RepriceResult {
   const oldEffectiveCost = supplierCostInStoreCurrency(previous, rates);
   const newEffectiveCost = supplierCostInStoreCurrency(incoming, rates);
   const costChanged = previous.price !== incoming.price
@@ -55,35 +63,68 @@ export function repriceAfterSupplierSync(
     || previous.providerRate !== incoming.providerRate;
 
   if (previous.retailPrice <= 0) {
-    return { retailPrice: previous.retailPrice, priceMarkupRatio: previous.priceMarkupRatio, priceReviewRequired: 0 };
+    return {
+      retailPrice: previous.retailPrice,
+      baseRetailPrice: previous.baseRetailPrice ?? 0,
+      priceMarkupRatio: previous.priceMarkupRatio,
+      priceReviewRequired: 0,
+    };
   }
+
+  // The base price is the admin's manually set baseline price.
+  // The retail price must NEVER go below this base price.
+  const basePrice = (previous.baseRetailPrice && previous.baseRetailPrice > 0)
+    ? previous.baseRetailPrice
+    : previous.retailPrice;
 
   if (newEffectiveCost === null) {
     return {
       retailPrice: previous.retailPrice,
+      baseRetailPrice: basePrice,
       priceMarkupRatio: previous.priceMarkupRatio,
       priceReviewRequired: costChanged ? 1 : previous.priceReviewRequired,
     };
   }
 
-  const storedRatio = previous.priceMarkupRatio > 0
-    ? previous.priceMarkupRatio
-    : oldEffectiveCost !== null && oldEffectiveCost > 0
-      ? previous.retailPrice / oldEffectiveCost
-      : 0;
-
-  if (newEffectiveCost >= previous.retailPrice) {
-    if (storedRatio <= 0 || !Number.isFinite(storedRatio)) {
-      return { retailPrice: previous.retailPrice, priceMarkupRatio: 0, priceReviewRequired: 1 };
+  // Determine the markup ratio that was established when the admin set the price relative to supplier cost:
+  let storedRatio = previous.priceMarkupRatio;
+  if (storedRatio <= 0 || !Number.isFinite(storedRatio)) {
+    if (oldEffectiveCost !== null && oldEffectiveCost > 0) {
+      storedRatio = basePrice / oldEffectiveCost;
+    } else if (newEffectiveCost > 0) {
+      storedRatio = basePrice / newEffectiveCost;
     }
-    // Never carry a below-cost manual ratio into an automatic supplier price increase.
-    const safeRatio = Math.max(1, storedRatio);
-    const nextPrice = Math.round(Math.max(newEffectiveCost, newEffectiveCost * safeRatio) * 100) / 100;
-    return { retailPrice: nextPrice, priceMarkupRatio: storedRatio, priceReviewRequired: 0 };
   }
 
+  if (storedRatio <= 0 || !Number.isFinite(storedRatio)) {
+    // If supplier cost exceeds current retail price, protect against loss
+    if (newEffectiveCost >= previous.retailPrice) {
+      return {
+        retailPrice: Math.round(newEffectiveCost * 100) / 100,
+        baseRetailPrice: basePrice,
+        priceMarkupRatio: 0,
+        priceReviewRequired: 1,
+      };
+    }
+    return {
+      retailPrice: previous.retailPrice,
+      baseRetailPrice: basePrice,
+      priceMarkupRatio: 0,
+      priceReviewRequired: 0,
+    };
+  }
+
+  // Calculate dynamic price based on the current supplier cost and established markup ratio:
+  const calculatedPrice = Math.round(newEffectiveCost * storedRatio * 100) / 100;
+
+  // The retail price increases when supplier cost rises, and decreases when supplier cost falls.
+  // CRITICAL REQUIREMENT: The retail price MUST NEVER fall below the admin's set base price (`basePrice`),
+  // and MUST NEVER fall below the current supplier cost (`newEffectiveCost`).
+  const nextPrice = Math.round(Math.max(basePrice, newEffectiveCost, calculatedPrice) * 100) / 100;
+
   return {
-    retailPrice: previous.retailPrice,
+    retailPrice: nextPrice,
+    baseRetailPrice: basePrice,
     priceMarkupRatio: storedRatio,
     priceReviewRequired: 0,
   };

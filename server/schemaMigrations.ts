@@ -14,6 +14,8 @@ export async function ensureSchemaMigrations(db: any) {
       ALTER TABLE activation_services ADD COLUMN IF NOT EXISTS "flashSaleEndsAt" timestamp;
       ALTER TABLE activation_services ADD COLUMN IF NOT EXISTS "tags" text DEFAULT '';
       ALTER TABLE activation_services ADD COLUMN IF NOT EXISTS "slug" varchar(160);
+      ALTER TABLE activation_services ADD COLUMN IF NOT EXISTS "baseRetailPrice" double precision DEFAULT 0;
+      UPDATE activation_services SET "baseRetailPrice" = "retailPrice" WHERE ("baseRetailPrice" IS NULL OR "baseRetailPrice" = 0) AND "retailPrice" > 0;
     `);
 
     // 2. Ensure admin_passkeys table exists for WebAuthn biometric security

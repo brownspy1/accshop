@@ -721,6 +721,7 @@ export const shopRouter = router({
         if (input.isListed && (row.priceReviewRequired === 1 || needsInitialManualReview) && !input.confirmPriceReview) throw new Error("Supplier cost/currency আগে review করুন; তারপর 'দাম যাচাই করেছি' নির্বাচন করুন।");
         const updateValues: Record<string, unknown> = {
           retailPrice: input.retailPrice,
+          baseRetailPrice: input.retailPrice,
           isListed: input.isListed ? 1 : 0,
           priceMarkupRatio,
           priceReviewRequired: input.confirmPriceReview ? 0 : needsInitialManualReview ? 1 : row.priceReviewRequired,

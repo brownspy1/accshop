@@ -64,16 +64,18 @@ async function performSync(provider: ShopProvider): Promise<SyncResult> {
       const pricing = previous ? repriceAfterSupplierSync({
         price: previous.supplierPrice, currency: previous.supplierCurrency,
         providerRate: previous.providerRate, retailPrice: previous.retailPrice,
+        baseRetailPrice: previous.baseRetailPrice ?? previous.retailPrice,
         priceMarkupRatio: previous.priceMarkupRatio, priceReviewRequired: previous.priceReviewRequired,
       }, {
         price: item.price, currency: "ACC", providerRate: 0,
-      }, rates) : { retailPrice: 0, priceMarkupRatio: 0, priceReviewRequired: 0 };
+      }, rates) : { retailPrice: 0, baseRetailPrice: 0, priceMarkupRatio: 0, priceReviewRequired: 0 };
       await db.insert(activationServices).values({
         serviceKey: item.key, provider: "acczone", providerServiceId: item.key,
         name: item.name, description: item.description, supplierPrice: item.price,
         supplierCurrency: "ACC", providerRate: 0, pricingTiers: null,
         stock: item.stock, isActive: item.isActive, lastStockSyncedAt: now,
-        retailPrice: pricing.retailPrice, priceMarkupRatio: pricing.priceMarkupRatio,
+        retailPrice: pricing.retailPrice, baseRetailPrice: pricing.baseRetailPrice,
+        priceMarkupRatio: pricing.priceMarkupRatio,
         priceReviewRequired: pricing.priceReviewRequired,
       }).onConflictDoUpdate({
         target: activationServices.serviceKey,
@@ -81,7 +83,8 @@ async function performSync(provider: ShopProvider): Promise<SyncResult> {
           provider: "acczone", providerServiceId: item.key, name: item.name,
           description: item.description, supplierPrice: item.price, supplierCurrency: "ACC",
           providerRate: 0, pricingTiers: null, stock: item.stock, isActive: item.isActive,
-          retailPrice: pricing.retailPrice, priceMarkupRatio: pricing.priceMarkupRatio,
+          retailPrice: pricing.retailPrice, baseRetailPrice: pricing.baseRetailPrice,
+          priceMarkupRatio: pricing.priceMarkupRatio,
           priceReviewRequired: pricing.priceReviewRequired, lastStockSyncedAt: now, updatedAt: now,
         },
       });
@@ -104,16 +107,18 @@ async function performSync(provider: ShopProvider): Promise<SyncResult> {
       const pricing = previous ? repriceAfterSupplierSync({
         price: previous.supplierPrice, currency: previous.supplierCurrency,
         providerRate: previous.providerRate, retailPrice: previous.retailPrice,
+        baseRetailPrice: previous.baseRetailPrice ?? previous.retailPrice,
         priceMarkupRatio: previous.priceMarkupRatio, priceReviewRequired: previous.priceReviewRequired,
       }, {
         price: supplierPrice, currency: "USDT", providerRate: item.rateInrPerUsdt,
-      }, rates) : { retailPrice: 0, priceMarkupRatio: 0, priceReviewRequired: 0 };
+      }, rates) : { retailPrice: 0, baseRetailPrice: 0, priceMarkupRatio: 0, priceReviewRequired: 0 };
       await db.insert(activationServices).values({
         serviceKey, provider: "couponshops", providerServiceId: item.serviceId,
         name: item.name, description: null, supplierPrice, supplierCurrency: "USDT",
         providerRate: item.rateInrPerUsdt, pricingTiers: JSON.stringify(item.tiers),
         stock: item.stock, isActive: 1, lastStockSyncedAt: now,
-        retailPrice: pricing.retailPrice, priceMarkupRatio: pricing.priceMarkupRatio,
+        retailPrice: pricing.retailPrice, baseRetailPrice: pricing.baseRetailPrice,
+        priceMarkupRatio: pricing.priceMarkupRatio,
         priceReviewRequired: pricing.priceReviewRequired,
       }).onConflictDoUpdate({
         target: activationServices.serviceKey,
@@ -121,7 +126,8 @@ async function performSync(provider: ShopProvider): Promise<SyncResult> {
           provider: "couponshops", providerServiceId: item.serviceId, name: item.name,
           supplierPrice, supplierCurrency: "USDT", providerRate: item.rateInrPerUsdt,
           pricingTiers: JSON.stringify(item.tiers), stock: item.stock, isActive: 1,
-          retailPrice: pricing.retailPrice, priceMarkupRatio: pricing.priceMarkupRatio,
+          retailPrice: pricing.retailPrice, baseRetailPrice: pricing.baseRetailPrice,
+          priceMarkupRatio: pricing.priceMarkupRatio,
           priceReviewRequired: pricing.priceReviewRequired, lastStockSyncedAt: now, updatedAt: now,
         },
       });
@@ -154,10 +160,11 @@ async function performSync(provider: ShopProvider): Promise<SyncResult> {
       const pricing = previous ? repriceAfterSupplierSync({
         price: previous.supplierPrice, currency: previous.supplierCurrency,
         providerRate: previous.providerRate, retailPrice: previous.retailPrice,
+        baseRetailPrice: previous.baseRetailPrice ?? previous.retailPrice,
         priceMarkupRatio: previous.priceMarkupRatio, priceReviewRequired: previous.priceReviewRequired,
       }, {
         price: supplierPrice, currency: "USDT", providerRate: rates.usdtToStoreRate,
-      }, rates) : { retailPrice: 0, priceMarkupRatio: 0, priceReviewRequired: 0 };
+      }, rates) : { retailPrice: 0, baseRetailPrice: 0, priceMarkupRatio: 0, priceReviewRequired: 0 };
 
       const tiers = [{ minQuantity: 1, maxQuantity: 100, priceUsdt: supplierPrice, priceInr: 0 }];
 
@@ -166,7 +173,8 @@ async function performSync(provider: ShopProvider): Promise<SyncResult> {
         name: item.name, description: item.description, supplierPrice, supplierCurrency: "USDT",
         providerRate: rates.usdtToStoreRate, pricingTiers: JSON.stringify(tiers),
         stock: item.stock, isActive: item.stock > 0 ? 1 : 0, lastStockSyncedAt: now,
-        retailPrice: pricing.retailPrice, priceMarkupRatio: pricing.priceMarkupRatio,
+        retailPrice: pricing.retailPrice, baseRetailPrice: pricing.baseRetailPrice,
+        priceMarkupRatio: pricing.priceMarkupRatio,
         priceReviewRequired: pricing.priceReviewRequired,
       }).onConflictDoUpdate({
         target: activationServices.serviceKey,
@@ -175,7 +183,8 @@ async function performSync(provider: ShopProvider): Promise<SyncResult> {
           description: item.description || undefined,
           supplierPrice, supplierCurrency: "USDT", providerRate: rates.usdtToStoreRate,
           pricingTiers: JSON.stringify(tiers), stock: item.stock, isActive: item.stock > 0 ? 1 : 0,
-          retailPrice: pricing.retailPrice, priceMarkupRatio: pricing.priceMarkupRatio,
+          retailPrice: pricing.retailPrice, baseRetailPrice: pricing.baseRetailPrice,
+          priceMarkupRatio: pricing.priceMarkupRatio,
           priceReviewRequired: pricing.priceReviewRequired, lastStockSyncedAt: now, updatedAt: now,
         },
       });
