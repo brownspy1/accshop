@@ -234,8 +234,14 @@ export async function sendOrderCredentialEmail(orderId: number, resendAttemptId?
   if (!db) return "not_configured";
   const [order] = await db.select().from(orders).where(eq(orders.id, orderId)).limit(1);
   if (!order || order.status !== "fulfilled") return "not_ready";
+  if (!order.customerEmail || !order.customerEmail.includes("@")) return "not_ready";
+
   const [account] = await db.select().from(customerAccounts).where(eq(customerAccounts.id, order.customerAccountId ?? -1)).limit(1);
-  if (!account?.emailVerifiedAt || account.email !== order.customerEmail.toLowerCase()) return "not_verified";
+  if (account && !account.emailVerifiedAt) {
+    // Automatically verify account upon successful fulfilled order
+    await db.update(customerAccounts).set({ emailVerifiedAt: new Date(), updatedAt: new Date() }).where(eq(customerAccounts.id, account.id));
+  }
+
   const lines = await db.select().from(orderItems).where(eq(orderItems.orderId, orderId));
   if (!lines.length || lines.some(line => line.fulfillmentState !== "fulfilled" || !line.resultCodes)) return "not_ready";
   const payload = lines.map(line => {
@@ -263,9 +269,9 @@ export async function sendOrderCredentialEmail(orderId: number, resendAttemptId?
     dedupeKey,
     idempotencyKey: `accshop-${createHash("sha256").update(dedupeKey).digest("hex").slice(0, 36)}`,
     kind: "delivery",
-    accountId: account.id,
+    accountId: account ? account.id : (order.customerAccountId ?? 1),
     orderId,
-    recipient: account.email,
+    recipient: order.customerEmail.toLowerCase().trim(),
     content: {
       subject: `AccZone Shop - অর্ডার ডেলিভারি কোড [${order.orderNo}]`,
       html: `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1e293b;max-width:640px;margin:auto;padding:24px;border:1px solid #e2e8f0;border-radius:12px;background:#ffffff">
@@ -285,11 +291,95 @@ export async function sendOrderCredentialEmail(orderId: number, resendAttemptId?
   });
 }
 
+export async function sendOrderConfirmationEmail(orderId: number): Promise<MailResult> {
+  const db = await getDb();
+  if (!db) return "not_configured";
+  const [order] = await db.select().from(orders).where(eq(orders.id, orderId)).limit(1);
+  if (!order || !order.customerEmail || !order.customerEmail.includes("@")) return "not_ready";
+
+  const lines = await db.select().from(orderItems).where(eq(orderItems.orderId, orderId));
+  const [settings] = await db.select().from(storeSettings).where(eq(storeSettings.id, 1)).limit(1);
+  const baseUrl = safePublicBaseUrl(settings?.publicSiteUrl);
+  const trackUrl = `${baseUrl}/track?orderNo=${encodeURIComponent(order.orderNo)}`;
+
+  const itemsHtml = lines.map(line => `
+    <tr>
+      <td style="padding:10px 12px;border-bottom:1px solid #e2e8f0;color:#1e293b;font-weight:500">${escapeHtml(line.serviceName)}</td>
+      <td style="padding:10px 12px;border-bottom:1px solid #e2e8f0;color:#64748b;text-align:center">${line.quantity}</td>
+      <td style="padding:10px 12px;border-bottom:1px solid #e2e8f0;color:#0f172a;font-weight:600;text-align:right">${line.unitPrice * line.quantity} ${order.currency}</td>
+    </tr>
+  `).join("");
+
+  const itemsText = lines.map(l => `- ${l.serviceName} x ${l.quantity} = ${l.unitPrice * l.quantity} ${order.currency}`).join("\n");
+  const [account] = await db.select().from(customerAccounts).where(eq(customerAccounts.id, order.customerAccountId ?? -1)).limit(1);
+
+  const dedupeKey = `confirmation:${order.id}`;
+  return sendTracked({
+    dedupeKey,
+    idempotencyKey: `accshop-${createHash("sha256").update(dedupeKey).digest("hex").slice(0, 36)}`,
+    kind: "delivery",
+    accountId: account ? account.id : (order.customerAccountId ?? 1),
+    orderId,
+    recipient: order.customerEmail.toLowerCase().trim(),
+    content: {
+      subject: `AccZone Shop - অর্ডার নিশ্চিতকরণ [${order.orderNo}]`,
+      html: `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1e293b;max-width:600px;margin:auto;padding:28px 24px;border:1px solid #e2e8f0;border-radius:12px;background:#ffffff">
+        <div style="text-align:center;margin-bottom:20px">
+          <div style="display:inline-block;padding:8px 18px;background:#059669;color:#ffffff;font-size:18px;font-weight:700;border-radius:8px">AccZone Shop</div>
+        </div>
+        <h2 style="color:#0f172a;margin-top:0;font-size:20px;text-align:center">আপনার অর্ডারটি গ্রহণ করা হয়েছে!</h2>
+        <p style="font-size:14px;color:#475569;text-align:center;margin-top:4px">
+          অর্ডার নম্বর: <strong style="color:#059669">${escapeHtml(order.orderNo)}</strong>
+        </p>
+
+        <table style="width:100%;border-collapse:collapse;margin:24px 0;background:#f8fafc;border-radius:8px;overflow:hidden;border:1px solid #e2e8f0;font-size:14px">
+          <thead>
+            <tr style="background:#f1f5f9;color:#475569;text-align:left">
+              <th style="padding:10px 12px;font-weight:600">আইটেম</th>
+              <th style="padding:10px 12px;font-weight:600;text-align:center">পরিমাণ</th>
+              <th style="padding:10px 12px;font-weight:600;text-align:right">মূল্য</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${itemsHtml}
+            <tr>
+              <td colspan="2" style="padding:12px;font-weight:700;color:#0f172a;border-top:2px solid #cbd5e1;text-align:right">মোট মূল্য:</td>
+              <td style="padding:12px;font-weight:700;color:#059669;font-size:16px;border-top:2px solid #cbd5e1;text-align:right">${order.totalAmount} ${order.currency}</td>
+            </tr>
+          </tbody>
+        </table>
+
+        ${order.paymentAccount ? `
+        <div style="background:#eff6ff;padding:16px;border-radius:8px;border-left:4px solid #3b82f6;margin-bottom:20px">
+          <p style="margin:0 0 6px 0;font-weight:600;color:#1e40af;font-size:14px">পেমেন্ট বিবরণ (${escapeHtml(order.paymentMethod || "")}):</p>
+          <p style="margin:0;font-size:13px;color:#1e3a8a;line-height:1.6">
+            অ্যাকাউন্ট নম্বর: <strong>${escapeHtml(order.paymentAccount)}</strong><br/>
+            ${order.paymentReference ? `আপনার TrxID / Reference: <strong>${escapeHtml(order.paymentReference)}</strong><br/>` : ""}
+            ${order.paymentInstructions ? `<span style="color:#475569;font-size:12px">${escapeHtml(order.paymentInstructions)}</span>` : ""}
+          </p>
+        </div>` : ""}
+
+        <div style="text-align:center;margin:28px 0">
+          <a href="${trackUrl}" style="display:inline-block;padding:12px 28px;background:#059669;color:#ffffff;text-decoration:none;font-size:15px;font-weight:600;border-radius:8px;box-shadow:0 2px 4px rgba(5,150,105,0.2)">
+            অর্ডার স্ট্যাটাস ও ডেলিভারি ট্র্যাক করুন
+          </a>
+        </div>
+
+        <p style="font-size:12px;color:#94a3b8;line-height:1.5;margin-top:28px;border-top:1px solid #f1f5f9;padding-top:16px;text-align:center">
+          পেমেন্ট ভেরিফাই হওয়ার পর ডেলিভারি কোড এই ইমেইলে এবং ট্র্যাকিং পেজে স্বয়ংক্রিয়ভাবে প্রদান করা হবে।<br/>
+          &copy; AccZone Shop · All rights reserved.
+        </p>
+      </div>`,
+      text: `AccZone Shop - অর্ডার নিশ্চিতকরণ [${order.orderNo}]\n\nঅর্ডার নম্বর: ${order.orderNo}\nমোট মূল্য: ${order.totalAmount} ${order.currency}\nপদ্ধতি: ${order.paymentMethod} (${order.paymentAccount})\n\nআইটেমসমূহ:\n${itemsText}\n\nআপনার অর্ডার ট্র্যাক করুন:\n${trackUrl}\n\nপেমেন্ট নিশ্চিত হওয়ার সাথে সাথে ডেলিভারি কোড পাঠানো হবে।`,
+    },
+  });
+}
+
 export async function customerRecentDeliveryMail(orderId: number) {
   const db = await getDb();
   if (!db) return null;
   const [row] = await db.select().from(emailOutbox)
-    .where(and(eq(emailOutbox.orderId, orderId), eq(emailOutbox.kind, "delivery")))
+    .where(and(eq(emailOutbox.orderId, orderId), eq(emailOutbox.kind, "delivery"), sql`${emailOutbox.dedupeKey} LIKE 'delivery:%'`))
     .orderBy(desc(emailOutbox.createdAt)).limit(1);
   return row ? { status: row.status, sentAt: row.sentAt, attemptedAt: row.createdAt } : null;
 }

@@ -49,6 +49,10 @@ export async function verifyGmailWebhook(webhookUrl: string): Promise<boolean> {
     if (!res.ok && res.status !== 302 && res.status !== 200) {
       throw new Error(`Webhook রিকোয়েস্ট ব্যর্থ হয়েছে (HTTP ${res.status})। নিশ্চিত করুন Web App Deploy করার সময় 'Who has access: Anyone' দেওয়া হয়েছে।`);
     }
+    const data = (await res.json().catch(() => null)) as { success?: boolean; error?: string } | null;
+    if (data && data.success === false) {
+      throw new Error(`Google Apps Script এরর: ${data.error || "Webhook ভেরিফিকেশন ব্যর্থ।"}`);
+    }
     return true;
   } catch (err) {
     if (err instanceof Error && (err.name === "TimeoutError" || err.message.includes("timeout"))) {
@@ -153,6 +157,9 @@ export async function hasGmailConfigured(): Promise<boolean> {
 export async function inspectGmailStatus(): Promise<{
   configured: boolean;
   user: string | null;
+  rawUser: string | null;
+  webhookUrl: string | null;
+  fromName: string | null;
   mode: "smtp" | "webhook";
   updatedAt: Date | null;
 }> {
@@ -160,12 +167,15 @@ export async function inspectGmailStatus(): Promise<{
   let updatedAt: Date | null = null;
   try {
     const status = await getProviderCredentialStatus("gmail");
-    updatedAt = status.updatedAt;
+    updatedAt = status?.updatedAt ?? null;
   } catch {}
 
   return {
     configured: Boolean(config?.user && (config?.pass || config?.webhookUrl)),
     user: config?.user ? config.user.replace(/^(.{2})(.*)(@.*)$/, "$1***$3") : null,
+    rawUser: config?.user ?? null,
+    webhookUrl: config?.webhookUrl ?? null,
+    fromName: config?.fromName ?? "AccZone Shop",
     mode: config?.mode || (config?.webhookUrl ? "webhook" : "smtp"),
     updatedAt,
   };
@@ -250,6 +260,11 @@ export async function sendGmailEmail(options: {
 
     if (!res.ok && res.status !== 200 && res.status !== 302) {
       throw new Error(`Google Apps Script মাধ্যমে ইমেইল পাঠানো যায়নি (HTTP ${res.status})`);
+    }
+
+    const data = (await res.json().catch(() => null)) as { success?: boolean; error?: string } | null;
+    if (data && data.success === false) {
+      throw new Error(`Google Apps Script এরর: ${data.error || "ইমেইল পাঠানো যায়নি।"}`);
     }
 
     return { messageId: `gas-${Date.now()}` };

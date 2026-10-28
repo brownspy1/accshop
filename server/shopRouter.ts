@@ -13,9 +13,9 @@ import { mysqlAffectedRows, mysqlInsertId } from "./dbResults";
 import { refreshCatalogIfNeeded, SUPPLIER_STOCK_MAX_AGE_MS, syncProviderCatalog } from "./catalogSync";
 import { markupRatioForManualRetailPrice, supplierCostInStoreCurrency } from "./pricing";
 import { hashMagicToken, newMagicToken } from "./customerAuth";
-import { customerRecentDeliveryMail, inspectEmailConfigForAdmin, sendCustomerMagicLink, sendOrderCredentialEmail } from "./emailDelivery";
-import { saveGmailCredentials, sendGmailEmail } from "./gmailMailer";
-import { listResendDomains, verifiedSenderDomain } from "./resend";
+import { customerRecentDeliveryMail, inspectEmailConfigForAdmin, sendCustomerMagicLink, sendOrderConfirmationEmail, sendOrderCredentialEmail } from "./emailDelivery";
+import { getGmailConfig, hasGmailConfigured, saveGmailCredentials, sendGmailEmail } from "./gmailMailer";
+import { listResendDomains, sendResendEmail, verifiedSenderDomain } from "./resend";
 import { setDynamicAdminEmail } from "./_core/adminAllowlist";
 import { hashAdminPassword, verifyAdminPassword, verifyFallbackAdminSecret } from "./adminAuth";
 import { adminProcedure, publicProcedure, router } from "./_core/trpc";
@@ -537,6 +537,7 @@ export const shopRouter = router({
             unitPrice: product.retailPrice,
           })));
           return {
+            orderId,
             customerAccountId,
             verificationToken,
             receipt: {
@@ -552,6 +553,7 @@ export const shopRouter = router({
             },
           };
         });
+        if (created.orderId) void sendOrderConfirmationEmail(created.orderId).catch(err => console.error("[Checkout] Order confirmation mail error:", err));
         if (created.verificationToken) void sendCustomerMagicLink(created.customerAccountId, created.verificationToken, "verify").catch(() => undefined);
         return created.receipt;
       } catch (error) {
@@ -901,17 +903,65 @@ export const shopRouter = router({
         targetEmail: z.string().trim().email("সঠিক প্রাপক ইমেইল দিন"),
       })).mutation(async ({ input }) => {
         try {
-          const result = await sendGmailEmail({
-            to: input.targetEmail.trim(),
-            subject: "AccZone Shop - টেস্ট ইমেইল কনফার্মেশন",
-            html: `<div style="font-family:Arial,sans-serif;padding:24px;border:1px solid #e2e8f0;border-radius:10px;max-width:500px;margin:auto">
-              <h2 style="color:#059669;margin-top:0">🎉 Gmail SMTP সফলভাবে কাজ করছে!</h2>
-              <p>আপনার AccZone Shop থেকে এই টেস্ট ইমেইলটি সফলভাবে পাঠানো হয়েছে।</p>
-              <p style="color:#64748b;font-size:13px">AccZone Shop Automated Mailer</p>
-            </div>`,
-            text: "Gmail SMTP সফলভাবে কাজ করছে! AccZone Shop থেকে এই টেস্ট ইমেইল পাঠানো হয়েছে।",
-          });
-          return { success: true, messageId: result.messageId, message: "টেস্ট ইমেইল সফলভাবে পাঠানো হয়েছে! ইনবক্স চেক করুন।" };
+          const isGmail = await hasGmailConfigured();
+          const db = await getDb();
+          const isResend = !isGmail && db ? await hasProviderApiKey("resend") : false;
+
+          if (!isGmail && !isResend) {
+            throw new Error("কোনো ইমেইল মেথড (Gmail বা Resend) কনফিগার করা নেই। অনুগ্রহ করে আগে Gmail বা Resend সেটআপ করুন।");
+          }
+
+          if (isGmail) {
+            const config = await getGmailConfig();
+            const methodLabel = config?.mode === "webhook" ? "Google Apps Script Webhook (Port 443 HTTPS)" : "Gmail Direct SMTP";
+            const result = await sendGmailEmail({
+              to: input.targetEmail.trim(),
+              subject: "AccZone Shop - টেস্ট ইমেইল কনফার্মেশন",
+              html: `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1e293b;max-width:540px;margin:auto;padding:28px 24px;border:1px solid #e2e8f0;border-radius:12px;background:#ffffff">
+                <div style="text-align:center;margin-bottom:20px">
+                  <div style="display:inline-block;padding:8px 18px;background:#059669;color:#ffffff;font-size:18px;font-weight:700;border-radius:8px">AccZone Shop</div>
+                </div>
+                <h2 style="color:#059669;margin-top:0;font-size:20px;text-align:center">🎉 ইমেইল সার্ভিস সফলভাবে কাজ করছে!</h2>
+                <p style="font-size:14px;color:#334155;line-height:1.6">হ্যালো <strong>${input.targetEmail.trim()}</strong>,</p>
+                <p style="font-size:14px;color:#334155;line-height:1.6">
+                  আপনার AccZone Shop-এর <strong>Gmail Direct Mailer (${methodLabel})</strong> থেকে এই টেস্ট ইমেইলটি সফলভাবে আপনার ইনবক্সে এসে পৌঁছেছে।
+                </p>
+                <div style="background:#f0fdf4;padding:14px;border-radius:8px;border-left:4px solid #16a34a;margin:20px 0">
+                  <p style="margin:0;font-size:13px;color:#15803d">
+                    ✅ <strong>কাস্টমারদের অর্ডার কনফার্মেশন ও ডিজিটাল ডেলিভারি কোড এখন এই জিমেইল থেকে স্বয়ংক্রিয়ভাবে পাঠানো হবে।</strong>
+                  </p>
+                </div>
+                <p style="font-size:12px;color:#94a3b8;margin-top:24px;border-top:1px solid #f1f5f9;padding-top:14px;text-align:center">
+                  AccZone Shop Automated Mailer · ${config?.user ? `Sender: ${config.user}` : ""}
+                </p>
+              </div>`,
+              text: `AccZone Shop - ইমেইল সার্ভিস সফলভাবে কাজ করছে!\nআপনার Gmail (${config?.user}) থেকে এই টেস্ট বার্তাটি পাঠানো হয়েছে। কাস্টমার অর্ডার কনফার্মেশন ও ডিজিটাল ডেলিভারি কোড এখন স্বয়ংক্রিয়ভাবে পাঠানো হবে।`,
+            });
+            return {
+              success: true,
+              recipient: input.targetEmail.trim(),
+              messageId: result.messageId,
+              message: `টেস্ট ইমেইল সফলভাবে ${input.targetEmail.trim()}-এ পাঠানো হয়েছে! ইনবক্স অথবা স্প্যাম ফোল্ডার চেক করুন।`,
+            };
+          } else {
+            const [settingsRow] = db ? await db.select().from(storeSettings).where(eq(storeSettings.id, 1)).limit(1) : [];
+            const apiKey = await getProviderApiKey("resend");
+            const from = settingsRow?.resendFromEmail || "orders@acczone.shop";
+            const result = await sendResendEmail(apiKey, {
+              from,
+              to: input.targetEmail.trim(),
+              subject: "AccZone Shop - Resend টেস্ট ইমেইল",
+              html: `<h2>AccZone Shop Resend Test</h2><p>Resend API সফলভাবে কাজ করছে।</p>`,
+              text: "AccZone Shop Resend Test",
+              idempotencyKey: `test-${Date.now()}`,
+            });
+            return {
+              success: true,
+              recipient: input.targetEmail.trim(),
+              messageId: result.id,
+              message: `Resend মাধ্যমে টেস্ট ইমেইল ${input.targetEmail.trim()}-এ পাঠানো হয়েছে!`,
+            };
+          }
         } catch (error) {
           const msg = error instanceof Error ? error.message : "Test email failed";
           throw new TRPCError({ code: "BAD_REQUEST", message: msg });
@@ -1162,6 +1212,16 @@ export const shopRouter = router({
           .where(and(eq(orders.id, input.orderId), eq(orders.status, "awaiting_payment")));
         if (mysqlAffectedRows(changed) !== 1) throw new Error("এই order payment confirmation-এর জন্য available নয় বা অন্য admin পরিবর্তন করেছেন।");
         return { success: true };
+      }),
+      resendDeliveryEmail: adminProcedure.input(z.object({ orderId: z.number().int().positive() })).mutation(async ({ input }) => {
+        const result = await sendOrderCredentialEmail(input.orderId, randomUUID());
+        if (result === "sent") {
+          return { success: true, message: "ডেলিভারি ইমেইল সফলভাবে গ্রাহকের কাছে পাঠানো হয়েছে!" };
+        } else if (result === "already_sent") {
+          return { success: true, message: "ইমেইল ইতিমধ্যে সফলভাবে পাঠানো হয়েছে।" };
+        } else {
+          throw new TRPCError({ code: "BAD_REQUEST", message: `ইমেইল পাঠানো যায়নি (${result})। নিশ্চিত করুন অর্ডারটি fulfilled এবং ইমেইল সেটিংস কনফিগার করা আছে।` });
+        }
       }),
       cancel: adminProcedure.input(z.object({ orderId: z.number().int().positive() })).mutation(async ({ input }) => {
         const db = await getDb();

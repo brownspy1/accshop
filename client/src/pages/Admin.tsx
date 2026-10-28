@@ -1773,6 +1773,13 @@ function AdminOrderRow({ order }: { order: { id: number; orderNo: string; custom
   const refreshCoupon = trpc.shop.admin.orders.refreshCouponOrder.useMutation({ onSuccess: result => { toast.success(`CouponShops provider status: ${result.providerStatus} · order ${result.status}`); refresh(); }, onError: e => toast.error(e.message) });
   const recover = trpc.shop.admin.orders.recoverUnknown.useMutation({ onSuccess: result => { toast.success(`History review recorded · order ${result.status}`); refresh(); }, onError: e => toast.error(e.message) });
   const cancel = trpc.shop.admin.orders.cancel.useMutation({ onSuccess: refresh, onError: e => toast.error(e.message) });
+  const resendDelivery = trpc.shop.admin.orders.resendDeliveryEmail.useMutation({
+    onSuccess: result => {
+      toast.success(result.message);
+      void emailDelivery.refetch();
+    },
+    onError: e => toast.error(e.message),
+  });
   const handleFulfill = () => {
     if (!( ["paid", "fulfillment_failed", "partially_fulfilled"].includes(order.status))) return;
     if (!window.confirm(`Order ${order.orderNo}: supplier API-তে activation fulfillment শুরু/retry হবে। CouponShops order USDT wallet-এ charge করতে পারে; AccZone configured provider balance ব্যবহার করে। Payment যাচাই ও retry eligibility নিশ্চিত করেছেন?`)) return;
@@ -1794,7 +1801,24 @@ function AdminOrderRow({ order }: { order: { id: number; orderNo: string; custom
       <div className="method-cell"><span>{order.paymentMethod === "bank" ? "Bank" : order.paymentMethod}</span><small>{order.paymentReference || "No txn reference"}</small></div><span className="order-date">{dateText(order.createdAt)}</span><strong>{formatMoney(order.totalAmount, order.currency)}</strong><span className={`status-chip status-${order.status}`}>{orderStatusLabels[order.status] ?? order.status}</span>
       <div className="order-action-cell">{order.status === "awaiting_payment" && <><button className="mini-action success" onClick={() => { if (window.confirm("আপনি কি এই manual payment যাচাই করেছেন? Confirm করলে পরের ধাপে আলাদা করে fulfillment চালাতে পারবেন।")) paid.mutate({ orderId: order.id }); }} disabled={paid.isPending}>Payment verify</button><button className="icon-action danger" title="Cancel order" onClick={() => { if (window.confirm("Order বাতিল করবেন?")) cancel.mutate({ orderId: order.id }); }}><X size={14} /></button></>}{["paid", "fulfillment_failed", "partially_fulfilled"].includes(order.status) && <button className="mini-action fulfill" onClick={handleFulfill} disabled={fulfill.isPending}>{fulfill.isPending ? <LoaderCircle size={13} className="spin" /> : <ZapIcon />} {order.status === "paid" ? "Fulfill" : "Retry"}</button>}{["fulfillment_unknown", "fulfilling"].includes(order.status) && hasAcczoneUnknown && <button className="mini-action fulfill" onClick={handleRecover} disabled={recover.isPending}>{recover.isPending ? <LoaderCircle size={13} className="spin" /> : <AlertTriangle size={13} />} Review AccZone history</button>}</div>
     </div>
-    {expanded && <div className="order-detail">{items.isLoading ? <PanelLoading /> : <><div className="order-detail-heading"><b>Order items</b><span>Created {dateText(order.createdAt)}</span></div>{order.status === "fulfilled" && <div className="admin-email-status"><Mail size={14} /><span>Activation email · {emailDelivery.isLoading ? "checking…" : emailDelivery.data?.status ?? "not initiated"}{emailDelivery.data?.sentAt ? ` · sent ${dateText(emailDelivery.data.sentAt)}` : ""}</span></div>}{items.data?.map(item => <div className="order-line" key={item.id}>
+    {expanded && <div className="order-detail">{items.isLoading ? <PanelLoading /> : <><div className="order-detail-heading"><b>Order items</b><span>Created {dateText(order.createdAt)}</span></div>{order.status === "fulfilled" && (
+        <div className="admin-email-status" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "10px", background: "#f8fafc", padding: "8px 12px", borderRadius: "6px", margin: "10px 0" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+            <Mail size={14} />
+            <span>Activation email · {emailDelivery.isLoading ? "checking…" : emailDelivery.data?.status ?? "not initiated"}{emailDelivery.data?.sentAt ? ` · sent ${dateText(emailDelivery.data.sentAt)}` : ""}</span>
+          </div>
+          <button
+            type="button"
+            className="button button-light"
+            style={{ padding: "4px 10px", fontSize: "12px", height: "auto" }}
+            onClick={() => resendDelivery.mutate({ orderId: order.id })}
+            disabled={resendDelivery.isPending}
+          >
+            {resendDelivery.isPending ? <LoaderCircle size={12} className="spin" /> : <Mail size={12} />}
+            ইমেইল পুনরায় পাঠান
+          </button>
+        </div>
+      )}{items.data?.map(item => <div className="order-line" key={item.id}>
       <div><b>{item.serviceName}</b><small>{item.provider} · {item.providerServiceId || item.serviceKey} · Qty {item.quantity} · {orderStatusLabels[item.fulfillmentState] ?? item.fulfillmentState}</small>{item.providerOrderId && <small>Provider order {item.providerOrderId} · {item.providerStatus}</small>}</div>
       <strong>{formatMoney(item.unitPrice * item.quantity, order.currency)}</strong>{item.providerMessage && <p className="warning-line"><AlertTriangle size={14} /> {item.providerMessage}</p>}
       {item.provider === "couponshops" && ["unknown", "processing"].includes(item.fulfillmentState) && <button className="mini-action fulfill" type="button" onClick={() => handleRefreshCoupon(item.id)} disabled={refreshCoupon.isPending}>{refreshCoupon.isPending ? <LoaderCircle size={13} className="spin" /> : <RefreshCw size={13} />} Refresh CouponShops order</button>}
@@ -2396,7 +2420,15 @@ function HistorySection() {
       <div className="pagination-row"><button className="button button-light" onClick={() => setPage(Math.max(1, page - 1))} disabled={page <= 1 || history.isFetching}><ArrowLeft size={14} /> Previous</button><span>Page {page}</span><button className="button button-light" onClick={() => setPage(page + 1)} disabled={(history.data?.length ?? 0) < 20 || history.isFetching}>Next <ArrowRight size={14} /></button></div></div></>;
 }
 
-const APPS_SCRIPT_CODE = `function doPost(e) {
+const APPS_SCRIPT_CODE = `function doGet(e) {
+  return ContentService.createTextOutput(JSON.stringify({
+    success: true,
+    status: "active",
+    message: "AccZone Gmail Mailer Webhook is active and running!"
+  })).setMimeType(ContentService.MimeType.JSON);
+}
+
+function doPost(e) {
   try {
     var data = JSON.parse(e.postData.contents);
     if (data.ping) {
@@ -2435,6 +2467,16 @@ function SettingsSection() {
 
   const [form, setForm] = useState({ currency: "BDT" as "BDT" | "USD" | "INR", paymentInstructions: "", bkashNumber: "", nagadNumber: "", bankDetails: "", supportContact: "", inrToStoreRate: 0, usdtToStoreRate: 0, acczoneUnitToStoreRate: 0, resendFromEmail: "", publicSiteUrl: "https://accshop-767l.onrender.com" });
   useEffect(() => { if (data) setForm({ currency: data.currency as "BDT" | "USD" | "INR", paymentInstructions: data.paymentInstructions ?? "", bkashNumber: data.bkashNumber ?? "", nagadNumber: data.nagadNumber ?? "", bankDetails: data.bankDetails ?? "", supportContact: data.supportContact ?? "", inrToStoreRate: Number(data.inrToStoreRate ?? 0), usdtToStoreRate: Number(data.usdtToStoreRate ?? 0), acczoneUnitToStoreRate: Number(data.acczoneUnitToStoreRate ?? 0), resendFromEmail: data.resendFromEmail ?? "", publicSiteUrl: data.publicSiteUrl || "https://accshop-767l.onrender.com" }); }, [data]);
+  useEffect(() => {
+    if (emailConfig.data?.gmail?.configured) {
+      const g = emailConfig.data.gmail;
+      if (g.rawUser && !gmailUser) setGmailUser(g.rawUser);
+      if (g.webhookUrl && !gmailWebhookUrl) setGmailWebhookUrl(g.webhookUrl);
+      if (g.fromName && gmailFromName === "AccZone Shop") setGmailFromName(g.fromName);
+      if (g.mode) setGmailMode(g.mode);
+      if (g.rawUser && !testEmailTarget) setTestEmailTarget(g.rawUser);
+    }
+  }, [emailConfig.data]);
   const save = trpc.shop.admin.settings.save.useMutation({ onSuccess: () => { toast.success("Store settings save হয়েছে"); void utils.shop.admin.settings.get.invalidate(); void utils.shop.catalog.storeInfo.invalidate(); void utils.shop.catalog.list.invalidate(); void utils.shop.admin.services.list.invalidate(); }, onError: e => toast.error(e.message) });
   const configureEmail = trpc.shop.admin.email.configureKey.useMutation({ onSuccess: result => { setResendKey(""); toast.success(result.senderVerified ? "Resend API key verified; sender verified" : `Resend key saved. Verified domains: ${result.verifiedDomains.join(", ") || "none"}`); void utils.shop.admin.email.status.invalidate(); }, onError: error => toast.error(error.message) });
   const configureGmail = trpc.shop.admin.email.configureGmail.useMutation({
@@ -2468,13 +2510,13 @@ function SettingsSection() {
           <Mail size={19} />
         </div>
 
-        <div className="email-provider-state" style={{ marginBottom: "14px" }}>
+        <div className="email-provider-state" style={{ marginBottom: "14px", display: "flex", alignItems: "center", flexWrap: "wrap", gap: "10px" }}>
           <span className={`status-chip ${emailConfig.data?.gmail?.configured ? "status-fulfilled" : "status-awaiting_payment"}`}>
             <i />{emailConfig.isLoading ? "Checking…" : emailConfig.data?.gmail?.configured ? "GMAIL ACTIVE & CONNECTED" : "GMAIL NOT CONFIGURED"}
           </span>
-          {emailConfig.data?.gmail?.configured && emailConfig.data.gmail.user && (
+          {emailConfig.data?.gmail?.configured && (
             <span style={{ fontSize: "12px", color: "var(--mint-deep, #08785f)", fontWeight: 650 }}>
-              সংযুক্ত Gmail: {emailConfig.data.gmail.user} {emailConfig.data.gmail.mode === "webhook" ? "(via Apps Script Webhook)" : "(via Direct SMTP)"}
+              সংযুক্ত Gmail: {emailConfig.data.gmail.rawUser || emailConfig.data.gmail.user} {emailConfig.data.gmail.mode === "webhook" ? "(via Apps Script Webhook - Port 443 HTTPS)" : "(via Direct SMTP)"}
             </span>
           )}
         </div>
@@ -2639,15 +2681,41 @@ function SettingsSection() {
         )}
 
         {emailConfig.data?.gmail?.configured && (
-          <div style={{ marginTop: "16px", paddingTop: "14px", borderTop: "1px solid var(--line, #e8eeeb)" }}>
-            <label className="field" style={{ maxWidth: "420px" }}>
-              টেস্ট ইমেইল পাঠান (Send Test Mail)
-              <div style={{ display: "flex", gap: "8px", marginTop: "5px" }}>
+          <div style={{ marginTop: "20px", padding: "16px 18px", borderRadius: "10px", background: "#f0fdf4", border: "1px solid #bbf7d0" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "8px", marginBottom: "8px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <Mail size={18} style={{ color: "#16a34a" }} />
+                <strong style={{ color: "#15803d", fontSize: "14px" }}>লাইভ ইমেইল টেস্ট (Live Email Test)</strong>
+              </div>
+              <span style={{ fontSize: "12px", color: "#16a34a", background: "#dcfce7", padding: "3px 8px", borderRadius: "6px", fontWeight: 600 }}>
+                {emailConfig.data.gmail.mode === "webhook" ? "Webhook ডেলিভারি সক্রিয়" : "SMTP ডেলিভারি সক্রিয়"}
+              </span>
+            </div>
+            <p style={{ margin: "0 0 14px 0", fontSize: "13px", color: "#374151", lineHeight: "1.5" }}>
+              আপনার সংযুক্ত Gmail দিয়ে সরাসরি একটি টেস্ট ইমেইল পাঠিয়ে যাচাই করুন যে অর্ডার কনফার্মেশন ও ডিজিটাল ডেলিভারি শতভাগ সচল রয়েছে।
+            </p>
+
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "10px", alignItems: "center" }}>
+              {emailConfig.data.gmail.rawUser && (
+                <button
+                  type="button"
+                  className="button button-primary"
+                  style={{ background: "#15803d", borderColor: "#15803d" }}
+                  onClick={() => sendTestEmail.mutate({ targetEmail: emailConfig.data!.gmail!.rawUser! })}
+                  disabled={sendTestEmail.isPending}
+                >
+                  {sendTestEmail.isPending ? <LoaderCircle className="spin" size={14} /> : <Mail size={14} />}
+                  আমার জিমেইলে ১-ক্লিক টেস্ট পাঠান ({emailConfig.data.gmail.rawUser})
+                </button>
+              )}
+
+              <div style={{ display: "flex", gap: "8px", flex: "1 1 280px", minWidth: "260px" }}>
                 <input
                   type="email"
                   value={testEmailTarget}
                   onChange={e => setTestEmailTarget(e.target.value)}
-                  placeholder="test@example.com"
+                  placeholder="অন্য কোনো ইমেইল দিন..."
+                  style={{ flex: 1, padding: "8px 12px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px" }}
                 />
                 <button
                   type="button"
@@ -2659,7 +2727,7 @@ function SettingsSection() {
                   পাঠান
                 </button>
               </div>
-            </label>
+            </div>
           </div>
         )}
       </section>
